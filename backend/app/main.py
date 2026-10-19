@@ -1,4 +1,5 @@
 from fastapi import APIRouter, FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(title="Phenix API")
 
@@ -18,3 +19,7 @@ def ping():
 
 
 app.include_router(api)
+
+# Métriques Prometheus (requêtes, codes HTTP, latences) sur /metrics.
+# Non exposé publiquement : Nginx ne transmet que /api, /docs et /health.
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(app, include_in_schema=False)
