@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - .env.enc
+      - ${ENV_FILE:-.env.example}.enc
     environment:
       - TZ=UTC
     read_only: true
@@ -57,7 +57,7 @@ services:
       - dmz
       - app
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -68,7 +68,7 @@ services:
       - "5432"
     restart: unless-stopped
     env_file:
-      - .env.enc
+      - ${ENV_FILE:-.env.example}.enc
     environment:
       - TZ=UTC
     volumes:
