@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: resilience
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
