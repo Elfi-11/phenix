@@ -10,8 +10,9 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 | Backend | Python, FastAPI |
 | Base de données | PostgreSQL |
 | Reverse proxy | Nginx |
-| Admin BDD | pgAdmin |
-| Sauvegardes | DBackup (optionnel) |
+| Supervision | Prometheus, Loki, Grafana |
+| Sauvegardes | pg_dump (automatique) |
+| Admin BDD | pgAdmin (dev uniquement) |
 
 ## Structure
 
@@ -19,9 +20,11 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 phenix/
 ├── docker-compose.yml
 ├── nginx.conf
-├── .env.example
-├── backend/     # API FastAPI (code dans app/)
-└── frontend/    # application React (code dans src/)
+├── backend/            # API FastAPI (code dans app/)
+├── frontend/           # application React (code dans src/)
+├── infra/
+│   └── observability/  # config Prometheus, Promtail, Grafana
+└── backups/            # dumps de la base (non versionné)
 ```
 
 ## Lancer le projet
@@ -31,13 +34,18 @@ phenix/
 ```bash
 git clone https://github.com/Elfi-11/phenix.git
 cd phenix
-cp .env
+```
+
+Créer le fichier `.env` à la racine (valeurs à demander à l'équipe, ne jamais le committer), puis :
+
+```bash
 docker compose up -d --build
 ```
 
-run dbackup : 
+Avec pgAdmin (développement) :
+
 ```bash
-docker compose --profile backup up -d dbackup
+docker compose --profile dev up -d --build
 ```
 
 ## Accès
@@ -47,7 +55,9 @@ docker compose --profile backup up -d dbackup
 | http://localhost:8080 | Application |
 | http://localhost:8080/api/ | API |
 | http://localhost:8080/docs | Documentation de l'API |
-| http://localhost:8080/pgadmin/ | pgAdmin |
+| http://localhost:3000 | Grafana |
+| http://localhost:9090 | Prometheus |
+| http://localhost:5050 | pgAdmin (profil `dev`) |
 
 ## Commandes utiles
 
@@ -60,10 +70,4 @@ docker compose down                # tout arrêter
 
 ## Sauvegardes
 
-DBackup ne se lance pas par défaut :
-
-```bash
-docker compose --profile backup up -d dbackup
-```
-
-Interface : https://localhost:3000 — détails dans [Dbackup_Process.md](Dbackup_Process.md).
+Le service `pg_dump` sauvegarde la base toutes les 5 minutes dans `backups/latest.sql`.
