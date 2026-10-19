@@ -4,61 +4,75 @@ Cette procédure doit être suivie **intégralement, dans l'ordre**, à chaque n
 
 ---
 
-## 0. Prérequis
+## 0. Prérequis (PC Hôte Windows + Docker Desktop)
 
-- Le `docker-compose.yml` doit contenir le volume `${BACKUP_PATH}/backups:/backups` (c'est ce qui rend `/backups` accessible dans le conteneur).
-- Le fichier `.env` du projet doit être renseigné :
-  - `BACKUP_PATH` : chemin hôte où stocker les données/backups.
-  - `ENCRYPTION_KEY` (ou `DBACKUP_ENCRYPTION_KEY` selon naming) : à générer avec
-    ```bash
-    openssl rand -hex 32
-    ```
-  - `BETTER_AUTH_SECRET` (ou `DBACKUP_AUTH_SECRET` selon naming) : à générer avec
-    ```bash
-    openssl rand -base64 32
-    ```
-  - `BETTER_AUTH_URL` : URL d'accès à l'instance (ex: `https://localhost:3000`).
+Le fichier `.env` à la racine du projet doit contenir :
 
- Générer des valeurs **différentes** pour chaque environnement (dev/prod) — ne jamais réutiliser les mêmes secrets d'une machine à l'autre.
+```env
+BACKUP_PATH=C:/Users/Admin/phenix-backups     # chemin hôte, avec des / (pas de \)
+BACKUP_URL=https://localhost:3000
+DBACKUP_ENCRYPTION_KEY=
+DBACKUP_AUTH_SECRET=
+```
 
-- Le conteneur DBackup doit être démarré :
-  ```bash
-  docker compose up -d dbackup
-  ```
-- Accès à `https://localhost:3000` (certificat auto-signé à accepter dans le navigateur au premier accès).
+Générer les deux secrets (PowerShell) :
+
+```powershell
+# DBACKUP_ENCRYPTION_KEY
+python -c "import secrets; print(secrets.token_hex(32))"
+# DBACKUP_AUTH_SECRET
+python -c "import secrets, base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"
+```
+
+Générer des valeurs **différentes** pour chaque machine — ne jamais réutiliser les mêmes secrets d'un poste à l'autre.
 
 ---
 
-## 1. Créer le dossier de backups sur l'hôte + droits
+## 1. Lancer DBackup
 
-Le conteneur DBackup tourne avec l'**UID/GID 1001**. Le dossier de destination doit lui appartenir, sinon toute écriture échoue avec `EACCES: permission denied`.
+Le service `dbackup` est dans le profil Compose `backup` : un simple `docker compose up` l'ignore. Depuis la racine du projet :
 
-Se placer dans le dossier contenant le `.env`, puis :
+```powershell
+# DBackup seul
+docker compose --profile backup up -d dbackup
 
-```bash
-export $(grep -v '^#' .env | xargs)
-mkdir -p ${BACKUP_PATH}/backups
-sudo chown -R 1001:1001 ${BACKUP_PATH}/backups
+# ou toute la stack + DBackup
+docker compose --profile backup up -d --build
 ```
+
+Docker crée automatiquement `${BACKUP_PATH}/data` et `${BACKUP_PATH}/backups`. Sous Docker Desktop (WSL2), **pas de `chown`** à faire : les droits sur les dossiers montés depuis Windows sont gérés par Docker Desktop.
 
 **Vérification :**
-```bash
-ls -la ${BACKUP_PATH}/backups
+
+```powershell
+docker compose --profile backup ps
+docker compose --profile backup logs -f dbackup
 ```
-Le dossier `.` doit apparaître avec `1001 1001` comme propriétaire/groupe.
- À refaire sur **chaque nouvelle machine** — les droits ne se propagent pas automatiquement entre dev/prod.
+
+**Arrêt :**
+
+```powershell
+docker compose --profile backup stop dbackup
+```
 
 ---
 
 ## 2. Se connecter à DBackup
 
-Aller sur `https://localhost:3000` et se connecter avec le compte admin.
+Aller sur `https://localhost:3000` (**https**, pas http) et accepter le certificat auto-signé (« Avancé » → « Continuer »).
+Au premier accès, créer le compte admin.
+
+L'interface n'est accessible que depuis le PC Hôte (`127.0.0.1:3000`), elle n'est pas exposée au réseau du groupe.
+
+> Les étapes suivantes (credentials, source, destination, jobs…) seront finalisées une fois la stratégie de sauvegarde définie en équipe.
 
 ---
 
 ## 3. Créer un Credential BDD
 
-Menu **Security Vault → Credentials** → créer un credential avec les infos de connexion à la base de données (host, user, mot de passe) — reprendre les valeurs du `.env` du projet.
+Menu **Security Vault → Credentials** → créer un credential avec les infos de connexion à la base de données (user, mot de passe) — reprendre les valeurs du `.env` du projet.
+
+Host : **`db`**, port **`5432`** (nom du service dans le réseau Docker) — et non `localhost`.
 
 ---
 
@@ -120,6 +134,9 @@ Menu **System Settings → Configuration Backup** :
 Cette sauvegarde permet de restaurer toute la configuration DBackup (adaptateurs, jobs, users, settings) en cas de crash du serveur, sans dépendre d'un snapshot de la base de données interne.
 
 ---
+
+> ⚠️ **Étapes 9 à 13 : procédure Linux (systemd), non applicable telle quelle au PC Hôte Windows.**
+> Elles sont conservées comme référence. L'équivalent Windows du backup à l'extinction reste à définir en équipe.
 
 ## 9. Créer une clé API (pour le trigger au shutdown)
 
@@ -339,13 +356,13 @@ sudo systemctl restart systemd-journald
 ## Points de vigilance récapitulatifs
 
 - **Base Path** = toujours le chemin **conteneur** (`/backups`), jamais le chemin hôte.
-- **Permissions** (`chown 1001:1001`) à refaire sur chaque nouvelle machine.
-- **Secrets du `.env`** (`ENCRYPTION_KEY`, `BETTER_AUTH_SECRET`) à générer via `openssl rand`, différents par machine.
+- **Lancement** : toujours avec `--profile backup`, sinon le service `dbackup` est ignoré.
+- **Permissions** : `chown 1001:1001` uniquement sur un hôte Linux — inutile sous Docker Desktop Windows.
+- **Secrets du `.env`** (`DBACKUP_ENCRYPTION_KEY`, `DBACKUP_AUTH_SECRET`) à générer (voir étape 0), différents par machine.
 - **Clés (Encryption + API)** : à noter immédiatement à la création (souvent affichées une seule fois), stockées sur support externe dédié, jamais sur le même disque que les backups.
 - **Recovery Kit** : à télécharger en plus de la clé d'encryption, indispensable pour une restauration hors DBackup.
 - **Une clé d'encryption différente par environnement** (dev / prod) recommandée pour l'isolation.
 - **Configuration Backup** (System Settings) à activer pour pouvoir restaurer la config DBackup elle-même en cas de crash.
-- **`${BACKUP_PATH}` dans le `.env`** n'est pas lu automatiquement par le shell — utiliser `export $(grep -v '^#' .env | xargs)` si besoin en ligne de commande.
 - **Fuseau horaire** : si le "Next Run" d'un job affiche une heure décalée par rapport au cron configuré, régler le fuseau horaire dans System Settings → General (privilégier ce réglage plutôt que la variable d'environnement `TZ` du `docker-compose.yml`).
 - **Trigger au shutdown — un simple `curl`/appel API ne suffit pas** : il ne fait que déclencher le job sans attendre sa fin, ce qui peut laisser le backup interrompu si Docker s'arrête juste après. Toujours utiliser le script Python avec polling (étape 11), qui attend le vrai statut `Success`/`Failed`/`Partial`/`Cancelled` avant de laisser l'extinction continuer.
 - **`After=docker.service` obligatoire** dans le fichier `.service` du trigger shutdown, sinon l'ordre d'arrêt entre ce service et Docker n'est pas garanti (échec silencieux, sans trace dans les logs).

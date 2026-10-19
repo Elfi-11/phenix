@@ -72,7 +72,7 @@ services:
   db:
     image: postgres:14
     expose:
-      - "5434"
+      - "5432"
     restart: unless-stopped
     env_file:
       - .env
@@ -94,6 +94,8 @@ services:
   dbackup:
     image: skyfay/dbackup:v2.10.1
     container_name: dbackup
+    # Lancé uniquement avec `docker compose --profile backup up` (nécessite BACKUP_PATH dans le .env)
+    profiles: ["backup"]
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
