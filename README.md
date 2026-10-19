@@ -35,6 +35,11 @@ cp .env
 docker compose up -d --build
 ```
 
+run dbackup : 
+```bash
+docker compose --profile backup up -d dbackup
+```
+
 ## Accès
 
 | URL | Service |
