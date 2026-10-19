@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - ${ENV_FILE:-.env.example}
+      - ${ENV_FILE:-.env.example}.enc
     environment:
       - TZ=UTC
     read_only: true
@@ -68,7 +68,7 @@ services:
       - "5432"
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE:-.env.example}
+      - ${ENV_FILE:-.env.example}.enc
     environment:
       - TZ=UTC
     volumes:

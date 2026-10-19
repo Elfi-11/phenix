@@ -33,6 +33,12 @@ class UserCreate(BaseModel):
     # Pas de champ `role` : un utilisateur ne choisit pas son rôle (attribué côté serveur, CLIENT par défaut)
 
 
+class LoginRequest(BaseModel):
+    # Pas de contraintes de format : un login invalide doit renvoyer 401, pas 422 (ne rien révéler des règles)
+    username: str = Field(max_length=50)
+    password: str = Field(max_length=72)
+
+
 class UserRead(ReadModel):
     id: int
     username: str
