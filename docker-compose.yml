@@ -1,0 +1,117 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    expose:
+      - "80"
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - default
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    expose:
+      - "8000"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - TZ=UTC
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - default
+    healthcheck:  
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+
+  nginx:
+    image: nginx:1.30.4-alpine
+    ports:
+      - "127.0.0.1:8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - frontend
+      - backend
+      - pgadmin
+    networks:
+      - default
+
+
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    expose:
+      - "80"
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      TZ: "UTC"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - db
+    networks:
+      - default
+
+
+  db:
+    image: postgres:14
+    expose:
+      - "5434"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    networks:
+    - default
+    healthcheck:  
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  dbackup:
+    image: skyfay/dbackup:v2.10.1
+    container_name: dbackup
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - ENCRYPTION_KEY=${DBACKUP_ENCRYPTION_KEY}
+      - BETTER_AUTH_URL=${BACKUP_URL}
+      - BETTER_AUTH_SECRET=${DBACKUP_AUTH_SECRET}
+    volumes:
+      - ${BACKUP_PATH}/data:/data
+      - ${BACKUP_PATH}/backups:/backups
+    networks:
+      - default
+
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+
+networks:
+  default:
+    driver: bridge
