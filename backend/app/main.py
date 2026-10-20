@@ -1,6 +1,8 @@
 from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.routers import auth
+
 app = FastAPI(title="Phenix API")
 
 # Toutes les routes métier passent par /api (c'est ce que Nginx transmet au backend)
@@ -17,6 +19,8 @@ def health():
 def ping():
     return {"pong": True}
 
+
+api.include_router(auth.router)
 
 app.include_router(api)
 
