@@ -242,7 +242,56 @@ services:
     networks:
       - ops
 
+  # Assistant documentaire local : aucun accès aux réseaux métier ou aux secrets.
+  ollama:
+    image: ollama/ollama:0.11.10
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - rag
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  rag:
+    build:
+      context: ./backend/ML
+    environment:
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      OLLAMA_BASE_URL: http://ollama:11434
+      RAG_CHAT_MODEL: qwen3:4b-instruct
+      RAG_EMBEDDING_MODEL: embeddinggemma:300m
+      RAG_CORPUS_DIR: /workspace/corpus
+      RAG_INDEX_PATH: /workspace/data/index.json
+    volumes:
+      - ./backend/ML/corpus:/workspace/corpus:ro
+      - rag_index:/workspace/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - rag
+    # Outil CLI ponctuel : up affiche l'aide puis termine avec le code 0.
+    command: ["python", "-m", "rag", "--help"]
+
 volumes:
+  # Volumes partagés avec l'ancien projet phenix-rag.
+  # Sur un poste neuf, les créer une fois avec docker volume create (voir README RAG).
+  ollama_models:
+    external: true
+    name: phenix-rag_ollama_models
+  rag_index:
+    external: true
+    name: phenix-rag_rag_index
   postgres-data:
   pgadmin-data:
   prometheus-data:
@@ -252,6 +301,7 @@ volumes:
   waf_logs:
 
 networks:
+  rag: {}
   dmz: {}
   app:
     internal: true
