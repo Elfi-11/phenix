@@ -1,0 +1,38 @@
+# Action : vérifier qu'un service est prêt et que la chaîne répond (preuve de reprise)
+# Usage  : bash infra/ansible/run.sh verify service=backend
+#          bash infra/ansible/run.sh verify service=backend check_url=http://localhost:8080/health
+- name: Vérifier un service
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Contrôle du paramètre
+      ansible.builtin.assert:
+        that:
+          - service is defined
+          - service in allowed_services
+        fail_msg: "Service manquant ou refusé. Autorisés : {{ allowed_services | join(', ') }}"
+        quiet: true
+
+    - name: Trouver le conteneur
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: "{{ service }}"
+
+    - name: Le conteneur est prêt
+      ansible.builtin.include_tasks: ../tasks/wait_healthy.yml
+      vars:
+        cid: "{{ container_id }}"
+
+    - name: La chaîne répond
+      ansible.builtin.uri:
+        url: "{{ check_url | default(entry_url) }}"
+        status_code: 200
+        timeout: 5
+      register: _http
+      until: _http.status == 200
+      retries: 10
+      delay: 3
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "OK : {{ service }} est prêt et {{ check_url | default(entry_url) }} répond 200"

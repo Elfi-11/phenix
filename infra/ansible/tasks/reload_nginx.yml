@@ -1,0 +1,10 @@
+# Recharge nginx pour qu'il retrouve les nouvelles adresses des services
+- name: "Trouver nginx"
+  ansible.builtin.include_tasks: get_container.yml
+  vars:
+    svc: "{{ nginx_service }}"
+
+- name: "Recharger nginx"
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ container_id }}", nginx, -s, reload]
+  changed_when: true
