@@ -62,7 +62,7 @@ services:
   waf:
     image: owasp/modsecurity-crs:4.24.1-nginx-202603150103
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"
     restart: unless-stopped
     environment:
       BACKEND: http://nginx:80
