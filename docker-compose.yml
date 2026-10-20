@@ -42,8 +42,6 @@ services:
 
   nginx:
     image: nginx:1.30.4-alpine
-    ports:
-      - "8080:80"
     restart: unless-stopped
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -61,6 +59,32 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+  waf:
+    image: owasp/modsecurity-crs:nginx   # à épingler sur un tag précis
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    environment:
+      BACKEND: http://nginx:80
+      PORT: 8080
+      PARANOIA: 1
+      ANOMALY_INBOUND: 5
+      ANOMALY_OUTBOUND: 4
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      MODSEC_AUDIT_LOG_FORMAT: JSON
+      MODSEC_AUDIT_LOG: /var/log/modsecurity/audit.log
+    volumes:
+      - waf_logs:/var/log/modsecurity
+    depends_on:
+      nginx:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dmz
+
+volumes:
+  waf_logs:
 
   db:
     image: postgres:14
@@ -220,14 +244,13 @@ services:
       - no-new-privileges:true
     networks:
       - ops
-
-volumes:
-  postgres-data:
-  pgadmin-data:
-  prometheus-data:
-  loki-data:
-  grafana-data:
-  promtail-positions:
+  volumes:
+    postgres-data:
+    pgadmin-data:
+    prometheus-data:
+    loki-data:
+    grafana-data:
+    promtail-positions:
 
 networks:
   dmz: {}
