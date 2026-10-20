@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.routers import auth, transactions
+from app.routers import accounts, auth, transactions
 
 app = FastAPI(title="Phenix API")
 
@@ -22,6 +22,7 @@ def ping():
 
 api.include_router(auth.router)
 api.include_router(transactions.router)
+api.include_router(accounts.router)
 
 app.include_router(api)
 
