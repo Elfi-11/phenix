@@ -1,2 +1,4 @@
 
 *.sh text eol=lf
+# SOPS refuse les fins de ligne Windows (CRLF) dans le fichier chiffré
+.env.enc text eol=lf

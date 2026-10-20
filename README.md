@@ -47,19 +47,36 @@ phenix/
 
 ## Lancer le projet
 
-**Prérequis :** Git, Docker Desktop, [age](https://github.com/FiloSottile/age) et [SOPS](https://github.com/getsops/sops).
+**Prérequis :** Git, Docker Desktop, [SOPS](https://github.com/getsops/sops).
 
-1. Récupérer le dépôt.
+**1. Installer SOPS** (une seule fois)
 
-```bash
-git clone https://github.com/Elfi-11/phenix.git
-cd phenix
+```powershell
+winget install --id SecretsOPerationS.SOPS -e
 ```
 
-2. Déposer la clé de l'équipe (à demander à Yannick, jamais dans Git) dans `~/.sops/keys.txt`
-   (Windows : `%USERPROFILE%\.sops\keys.txt`).
+Fermer et rouvrir VS Code, puis vérifier :
 
-3. Démarrer. Le script déchiffre `.env.enc` dans un fichier temporaire, lance les conteneurs puis supprime le fichier.
+```powershell
+sops --version
+```
+
+**2. Installer la clé** (une seule fois, à demander à Yannick en privé, jamais dans Git)
+
+```powershell
+New-Item -ItemType Directory "$HOME\.sops"
+```
+
+Enregistrer la clé dans `%USERPROFILE%\.sops\keys.txt` (Linux/WSL : `~/.sops/keys.txt`).
+
+**3. Récupérer le code**
+
+```bash
+git clone https://github.com/Elfi-11/phenix.git   # première fois
+git pull                                          # ensuite
+```
+
+**4. Démarrer**
 
 ```powershell
 # Windows
@@ -71,9 +88,32 @@ cd phenix
 infra/secrets/start.sh
 ```
 
-Toujours démarrer avec ce script : un `docker compose up` direct utiliserait les valeurs factices de `.env.example`.
+Le script remplace `docker compose up -d --build` : il déchiffre `.env.enc`, lance le build et les conteneurs avec les vrais secrets, puis supprime le fichier temporaire.
+**Ne jamais lancer `docker compose up` directement** : il utiliserait les valeurs factices de `.env.example` et le backend planterait.
+
+**5. Vérifier**
+
+```powershell
+docker compose ps
+```
+
+**6. Arrêter**
+
+```powershell
+docker compose down
+```
 
 Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets/README.md).
+
+### En cas d'erreur
+
+| Message | Solution |
+|---|---|
+| `sops n'est pas reconnu` | Fermer et rouvrir VS Code |
+| `Clé introuvable` | Revoir l'étape 2 |
+| `parsing time ... \x0d` | `Remove-Item .env.enc; git checkout -- .env.enc`, puis relancer l'étape 4 |
+| Backend `Restarting`, `CHANGE_ME` dans `docker compose logs backend` | Démarré sans le script : relancer l'étape 4 |
+| `container phenix-nginx-1 is unhealthy` | Attendre 30 s, puis relancer l'étape 4 |
 
 ## Accès
 
