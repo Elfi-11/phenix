@@ -1,0 +1,14 @@
+# Entrée : cid (identifiant du conteneur). Attend "healthy" (ou "running" s'il n'a pas de healthcheck)
+- name: "Attendre que le conteneur soit prêt"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{% raw %}{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}{% endraw %}"
+      - "{{ cid }}"
+  register: _state
+  until: _state.stdout | trim in ['healthy', 'running']
+  retries: 30
+  delay: 2
+  changed_when: false

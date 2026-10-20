@@ -1,0 +1,59 @@
+# Action : isoler un service du réseau (il reste démarré, pour l'analyse)
+# Usage  : bash infra/ansible/run.sh isolate service=backend
+# Pour le reconnecter : bash infra/ansible/run.sh unisolate service=backend
+- name: Isoler un service du réseau
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Contrôle du paramètre
+      ansible.builtin.assert:
+        that:
+          - service is defined
+          - service in isolatable_services
+        fail_msg: "Service manquant ou refusé. Isolables : {{ isolatable_services | join(', ') }}"
+        quiet: true
+
+    - name: Trouver le conteneur
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: "{{ service }}"
+
+    - name: Lister ses réseaux
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - '{% raw %}{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}{% endraw %}'
+          - "{{ container_id }}"
+      register: _nets
+      changed_when: false
+
+    - name: Mémoriser les réseaux (pour pouvoir le reconnecter)
+      ansible.builtin.copy:
+        content: "{{ _nets.stdout | trim }}\n"
+        dest: "{{ backups_dir }}/isolation_{{ service }}.txt"
+        mode: "0644"
+      when: _nets.stdout_lines | length > 0
+
+    - name: Déconnecter de chaque réseau
+      ansible.builtin.command:
+        argv: [docker, network, disconnect, "{{ item }}", "{{ container_id }}"]
+      loop: "{{ _nets.stdout_lines }}"
+      changed_when: true
+
+    - name: Contrôler qu'il n'a plus de réseau
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - '{% raw %}{{len .NetworkSettings.Networks}}{% endraw %}'
+          - "{{ container_id }}"
+      register: _left
+      changed_when: false
+      failed_when: _left.stdout | trim != '0'
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "OK : {{ service }} isolé (réseaux retirés : {{ _nets.stdout_lines | join(', ') }})"

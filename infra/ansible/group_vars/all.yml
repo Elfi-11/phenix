@@ -1,0 +1,19 @@
+# Nom du projet Docker Compose (préfixe des conteneurs : phenix-backend-1, ...)
+compose_project: phenix
+
+project_dir: "{{ playbook_dir }}/../../.."
+backups_dir: "{{ project_dir }}/backups"
+
+# URL de contrôle de la chaîne complète (point d'entrée -> backend)
+entry_url: http://localhost:8080/health
+
+# Liste blanche : seuls ces services peuvent être redémarrés ou vérifiés
+allowed_services: [backend, frontend, nginx, db]
+
+# Seuls ces services peuvent être isolés du réseau
+isolatable_services: [backend, frontend]
+
+# Après le redémarrage de ces services, nginx est rechargé
+# (sinon il garde l'ancienne adresse du conteneur et renvoie des erreurs 502)
+reload_nginx_after: [backend, frontend]
+nginx_service: nginx

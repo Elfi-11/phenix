@@ -1,0 +1,40 @@
+# Action : redémarrer un service, attendre qu'il soit prêt, recharger nginx si besoin
+# Usage  : bash infra/ansible/run.sh restart service=backend
+- name: Redémarrer un service
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Contrôle du paramètre
+      ansible.builtin.assert:
+        that:
+          - service is defined
+          - service in allowed_services
+        fail_msg: "Service manquant ou refusé. Autorisés : {{ allowed_services | join(', ') }}"
+        quiet: true
+
+    - name: Trouver le conteneur
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: "{{ service }}"
+
+    - name: Retenir le conteneur
+      ansible.builtin.set_fact:
+        target_id: "{{ container_id }}"
+
+    - name: Redémarrer
+      ansible.builtin.command:
+        argv: [docker, restart, "{{ target_id }}"]
+      changed_when: true
+
+    - name: Attendre qu'il soit prêt
+      ansible.builtin.include_tasks: ../tasks/wait_healthy.yml
+      vars:
+        cid: "{{ target_id }}"
+
+    - name: Recharger nginx
+      ansible.builtin.include_tasks: ../tasks/reload_nginx.yml
+      when: service in reload_nginx_after
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "OK : {{ service }} redémarré et prêt"
