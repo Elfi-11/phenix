@@ -64,10 +64,11 @@ projet, avant de démarrer Ollama depuis le Compose principal :
 docker compose -f backend/ML/compose.rag.yml down
 ```
 
-Ne pas ajouter `-v`. Le Compose principal réutilise explicitement les volumes
-`phenix-rag_ollama_models` et `phenix-rag_rag_index` créés par l'ancien projet.
-Le premier conserve les modèles et le second l'index. Éviter de lancer les deux
-projets en parallèle sur ces mêmes volumes.
+Le Compose principal utilise ses propres volumes (`ollama_models`, `rag_index`) :
+les modèles et l'index de l'ancien projet ne sont pas repris. Il faut donc
+retélécharger les modèles et relancer `ingest` une fois (voir « Préparation sur
+un nouveau poste »). Les anciens volumes peuvent ensuite être supprimés :
+`docker volume rm phenix-rag_ollama_models phenix-rag_rag_index`.
 
 Après la transition, retirer `backend/ML/compose.rag.yml` du dépôt pour conserver
 une seule définition des services. Son arrêt doit être effectué avant son retrait.
@@ -80,20 +81,13 @@ et ressources suffisantes pour le modèle et les autres services. La configurati
 des secrets de la plateforme reste celle du Compose principal ; elle n'est pas
 injectée dans les services `ollama` et `rag`.
 
-Les deux volumes IA sont déclarés **externes** : ils sont indépendants du nom du
-projet principal et doivent exister avant le démarrage. Sur un poste neuf, les créer
-une fois. Les commandes suivantes peuvent aussi être lancées sur un poste où ils
-existent déjà ; elles réutilisent les volumes sans vider leur contenu :
+Les volumes IA (`ollama_models`, `rag_index`) sont créés automatiquement par Docker.
 
-```bash
-docker volume create phenix-rag_ollama_models
-docker volume create phenix-rag_rag_index
-```
+Construire les images et démarrer la plateforme, Ollama compris (jamais
+`docker compose up` directement, voir le README principal) :
 
-Construire les images et démarrer la plateforme :
-
-```bash
-docker compose up -d --build
+```powershell
+.\infra\secrets\start.ps1
 ```
 
 Pour reconstruire et démarrer seulement la partie IA, lorsque les autres services
@@ -116,8 +110,8 @@ docker compose exec ollama ollama pull qwen3:4b-instruct
 docker compose exec ollama ollama pull embeddinggemma:300m
 ```
 
-Ces téléchargements ne sont pas nécessaires sur le poste ayant déjà les deux
-modèles dans le volume conservé. Vérifier leur présence avec :
+À faire une fois par poste : les modèles restent ensuite dans le volume
+`ollama_models`. Vérifier leur présence avec :
 
 ```bash
 docker compose exec ollama ollama list
@@ -165,9 +159,8 @@ docker compose logs --tail=100 ollama
 ```
 
 `docker compose stop ollama` arrête le serveur IA. `docker compose down` arrête
-la plateforme complète. Les volumes IA externes restent conservés par Compose ;
-les volumes métier restent soumis à leurs propres règles. Pour un arrêt courant,
-ne pas employer `down -v`.
+la plateforme complète ; les volumes (modèles, index, données métier) sont conservés.
+Ne jamais employer `down -v` : il supprimerait tous les volumes, modèles compris.
 
 ## Corpus et mises à jour
 
