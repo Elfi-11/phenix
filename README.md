@@ -126,11 +126,19 @@ Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets
 | http://localhost:9090 | Prometheus | Ce PC uniquement |
 | http://localhost:5050 | pgAdmin (profil `dev`) | Ce PC uniquement |
 
-pgAdmin ne démarre pas par défaut :
+pgAdmin ne démarre pas par défaut (outil d'admin, jamais exposé). Pour le lancer avec les secrets, puis effacer le `.env` en clair :
 
-```bash
-docker compose --profile dev up -d pgadmin
+```powershell
+.\infra\secrets\decrypt.ps1 -Force; $env:ENV_FILE=".env"; docker compose --env-file .env --profile dev up -d --no-deps pgadmin; Remove-Item .env; Remove-Item Env:ENV_FILE
 ```
+
+Afficher les identifiants (sans créer de fichier) :
+
+```powershell
+sops decrypt --input-type dotenv --output-type dotenv .env.enc | Select-String "PGADMIN|POSTGRES"
+```
+
+Ouvrir http://localhost:5050 (connexion avec `PGADMIN_EMAIL` / `PGADMIN_PASSWORD`), puis ajouter un serveur : hôte `db`, port `5432`, identifiants `POSTGRES_*`. Arrêter : `docker compose stop pgadmin`.
 
 ## Commandes utiles
 
