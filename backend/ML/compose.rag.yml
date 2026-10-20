@@ -1,0 +1,26 @@
+# Projet indépendant : ne modifie pas le Compose principal.
+name: phenix-rag
+services:
+  ollama:
+    image: ollama/ollama:0.11.10
+    volumes:
+      - ollama_models:/root/.ollama
+    # Aucun port publié ; accessible uniquement depuis ce réseau Compose.
+  rag:
+    build: .
+    environment:
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      OLLAMA_BASE_URL: http://ollama:11434
+      RAG_CHAT_MODEL: qwen3:4b-instruct
+      RAG_EMBEDDING_MODEL: embeddinggemma:300m
+      RAG_CORPUS_DIR: /workspace/corpus
+      RAG_INDEX_PATH: /workspace/data/index.json
+    volumes:
+      - ./corpus:/workspace/corpus:ro
+      - rag_index:/workspace/data
+    depends_on:
+      - ollama
+volumes:
+  ollama_models:
+  rag_index:
