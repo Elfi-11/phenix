@@ -17,3 +17,8 @@ finally {
     Remove-Item Env:ENV_FILE -ErrorAction SilentlyContinue
 }
 docker compose ps
+
+# Proxy Windows : ajoute la vraie IP du client (X-Forwarded-For)
+Get-Process caddy -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Process caddy -ArgumentList "run","--config","infra\caddy\Caddyfile","--adapter","caddyfile" -WindowStyle Hidden
+Write-Host "Caddy demarre sur le port 8080 (vers le WAF sur 127.0.0.1:8081)"
