@@ -60,7 +60,7 @@ services:
       timeout: 3s
       retries: 3
   waf:
-    image: owasp/modsecurity-crs:nginx   # à épingler sur un tag précis
+    image: owasp/modsecurity-crs:4.24.1-nginx-202603150103
     ports:
       - "8080:8080"
     restart: unless-stopped
