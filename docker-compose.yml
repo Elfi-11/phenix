@@ -284,14 +284,9 @@ services:
     command: ["python", "-m", "rag", "--help"]
 
 volumes:
-  # Volumes partagés avec l'ancien projet phenix-rag.
-  # Sur un poste neuf, les créer une fois avec docker volume create (voir README RAG).
+  # Modèles Ollama et index RAG : créés automatiquement, modèles à télécharger une fois (voir README RAG)
   ollama_models:
-    external: true
-    name: phenix-rag_ollama_models
   rag_index:
-    external: true
-    name: phenix-rag_rag_index
   postgres-data:
   pgadmin-data:
   prometheus-data:
