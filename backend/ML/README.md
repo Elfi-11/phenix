@@ -5,6 +5,32 @@ pertinents dans un corpus validé et génère une réponse courte en français a
 références. Il utilise Ollama, les intégrations LangChain et un index JSON local.
 Il explique des procédures sans les exécuter et ne consulte pas l'état des services.
 
+## Commandes courantes depuis la racine
+
+Toutes les commandes ci-dessous se lancent depuis le dossier `phenix`, où se trouve le `docker-compose.yml` principal, et non depuis `backend/ML`. Les services `rag` et `ollama` doivent y être définis. Aucun `-f compose.rag.yml` n’est nécessaire.
+
+Après l’installation initiale et le téléchargement des modèles :
+
+```bash
+# Démarrer le serveur de modèles
+docker compose up -d ollama
+
+# Créer ou mettre à jour l’index après un changement du corpus
+docker compose run --rm rag python -m rag ingest
+
+# Poser une question
+docker compose run --rm rag python -m rag ask "Comment vérifier la collecte Prometheus ?"
+
+# Examiner les passages retrouvés sans générer de réponse
+docker compose run --rm rag python -m rag retrieve "Comment vérifier la collecte Prometheus ?"
+```
+
+L’ingestion est actuellement **manuelle**. Elle est nécessaire après l’ajout, la modification ou la suppression de documents dans `backend/ML/corpus/`, mais pas avant chaque question. Le corpus est monté en lecture seule depuis le dépôt ; une modification documentaire ne nécessite pas de reconstruire l’image.
+
+À terme, une vérification au démarrage pourra déclencher l’indexation uniquement si le corpus a changé. **Cette automatisation n’est pas encore implémentée.**
+
+Le service `rag` reste un outil en ligne de commande. L’accès depuis un futur front nécessitera une API ; ces commandes ne créent pas de serveur HTTP.
+
 ## Architecture
 
 Le RAG est intégré au **`docker-compose.yml` principal**, à la racine du dépôt.
@@ -29,6 +55,23 @@ index JSON. La question est vectorisée et comparée aux passages par similarit�
 cosinus. LangChain assemble les passages retenus et la question dans le prompt
 transmis au LLM. Cette opération ne réentraîne pas le modèle.
 
+## Transition depuis le Compose RAG séparé
+
+Pour un poste ayant utilisé `backend/ML/compose.rag.yml`, arrêter d'abord l'ancien
+projet, avant de démarrer Ollama depuis le Compose principal :
+
+```bash
+docker compose -f backend/ML/compose.rag.yml down
+```
+
+Ne pas ajouter `-v`. Le Compose principal réutilise explicitement les volumes
+`phenix-rag_ollama_models` et `phenix-rag_rag_index` créés par l'ancien projet.
+Le premier conserve les modèles et le second l'index. Éviter de lancer les deux
+projets en parallèle sur ces mêmes volumes.
+
+Après la transition, retirer `backend/ML/compose.rag.yml` du dépôt pour conserver
+une seule définition des services. Son arrêt doit être effectué avant son retrait.
+La suppression du fichier Compose ne supprime pas les volumes.
 
 ## Installation et démarrage
 
@@ -128,11 +171,9 @@ ne pas employer `down -v`.
 
 ## Corpus et mises à jour
 
-Les procédures initiales couvrent la collecte Prometheus, les compteurs HTTP et
-la réponse du backend via Nginx. Ajouter les procédures validées par l'équipe avec
-objectif, environnement, prérequis, étapes, résultat attendu et limites.
-Les procédures de reprise et le scénario principal restent à documenter selon
-l'implémentation retenue.
+Le corpus couvre les contrôles d’observabilité et des procédures d’incident : injections SQL, surcharge, problèmes d’accès, indisponibilités, sauvegardes et escalade humaine. Les fiches distinguent les éléments connus du projet des recommandations générales à adapter. Le scénario de paiement reste à vérifier avec le contrat API réellement disponible.
+
+Les sources et les points à valider sont présentés dans [CORPUS.md](CORPUS.md). Chaque nouvelle procédure doit préciser son objectif, son environnement, ses prérequis, ses étapes et le résultat attendu.
 
 Seul `backend/ML/corpus/` est lu : `.md`, `.txt` UTF-8 et PDF texte. Les fichiers
 cachés et liens symboliques sont exclus. Les PDF scannés nécessitent un OCR préalable.
