@@ -259,6 +259,32 @@ services:
       retries: 6
       start_period: 10s
 
+  # Prépare uniquement les modèles absents dans le serveur Ollama.
+  ollama-init:
+    image: ollama/ollama:0.11.10
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        for model in embeddinggemma:300m qwen3:4b-instruct; do
+          if ollama show "$$model" >/dev/null 2>&1; then
+            echo "Modele deja disponible : $$model"
+          else
+            echo "Telechargement : $$model"
+            ollama pull "$$model"
+          fi
+        done
+    depends_on:
+      ollama:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - rag
+
   rag:
     build:
       context: ./backend/ML
@@ -276,6 +302,8 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     security_opt:
       - no-new-privileges:true
     networks:
@@ -284,7 +312,7 @@ services:
     command: ["python", "-m", "rag", "--help"]
 
 volumes:
-  # Modèles Ollama et index RAG : créés automatiquement, modèles à télécharger une fois (voir README RAG)
+  # Volumes gérés par Compose : modèles préparés par ollama-init, indexation manuelle.
   ollama_models:
   rag_index:
   postgres-data:
