@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - ${ENV_FILE:-.env.example}.enc
+      - ${ENV_FILE:-.env.example}
     environment:
       - TZ=UTC
     read_only: true
@@ -83,16 +83,13 @@ services:
     networks:
       - dmz
 
-volumes:
-  waf_logs:
-
   db:
     image: postgres:14
     expose:
       - "5432"
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE:-.env.example}.enc
+      - ${ENV_FILE:-.env.example}
     environment:
       - TZ=UTC
     volumes:
@@ -244,13 +241,15 @@ volumes:
       - no-new-privileges:true
     networks:
       - ops
-  volumes:
-    postgres-data:
-    pgadmin-data:
-    prometheus-data:
-    loki-data:
-    grafana-data:
-    promtail-positions:
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  promtail-positions:
+  waf_logs:
 
 networks:
   dmz: {}
