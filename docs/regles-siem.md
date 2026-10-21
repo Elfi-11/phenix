@@ -44,12 +44,14 @@ Extraction en LogQL (utilisée dans les trois règles) :
 
 ## 3. Les quatre règles
 
-| Règle | Ce qu'elle détecte | Seuil | Gravité |
-|---|---|---|---|
-| Rafale de 403 | Une IP se fait refuser plus de 10 fois en 5 min (attaque bloquée par le WAF, ou IP déjà bloquée qui insiste) | plus de 10 | warning |
-| Scan de chemins | Une IP provoque plus de 15 erreurs 404 en 5 min (recherche de pages cachées) | plus de 15 | warning |
-| Erreurs 5xx | Plus de 5 erreurs serveur en 5 min, toutes IP confondues (service en panne ou attaque qui le fait tomber) | plus de 5 | critical |
-| Injection SQL | Une requête contient un motif d'injection SQL (`UNION SELECT`, `' OR 1=1`, `' --`, `sleep(`, `benchmark(`, `information_schema`) | au moins 1 en 5 min | critical |
+| Règle | Ce qu'elle détecte | Seuil | Fenêtre | Vérifiée toutes les | Attente avant l'alerte | Gravité |
+|---|---|---|---|---|---|---|
+| Rafale de 403 | Une IP se fait refuser plus de 10 fois (attaque bloquée par le WAF, ou IP déjà bloquée qui insiste) | plus de 10 | 5 min | 1 min | 1 min | warning |
+| Scan de chemins | Une IP provoque plus de 15 erreurs 404 (recherche de pages cachées) | plus de 15 | 5 min | 1 min | 1 min | warning |
+| Erreurs 5xx | Plus de 5 erreurs serveur, toutes IP confondues (service en panne ou attaque qui le fait tomber) | plus de 5 | 5 min | 1 min | 1 min | critical |
+| Injection SQL | Une requête contient un motif d'injection SQL (`UNION SELECT`, `' OR 1=1`, `' --`, `sleep(`, `benchmark(`, `information_schema`) | au moins 1 | 5 min | 1 min | aucune | critical |
+
+Lecture des colonnes : la **fenêtre** est la période de logs comptée (les 5 dernières minutes) ; la règle est **vérifiée** chaque minute ; l'**attente** est le temps pendant lequel le seuil doit rester dépassé avant que l'alerte passe en `Firing`. Une alerte revient à `Normal` quand l'événement sort de la fenêtre, soit au plus 5 minutes après le dernier événement.
 
 Chaque alerte, sauf les erreurs 5xx, porte le label `ip`. Une alerte déclenchée passe par les états `Normal`, `Pending` (seuil dépassé), puis `Firing` après 1 minute.
 
