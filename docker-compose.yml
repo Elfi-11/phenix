@@ -1,5 +1,7 @@
 services:
   frontend:
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ./frontend
     expose:
@@ -108,6 +110,8 @@ services:
       start_period: 10s
 
   pg_dump:
+    security_opt:
+      - no-new-privileges:true
     image: postgres:14
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]
