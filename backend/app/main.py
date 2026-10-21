@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.routers import accounts, assistant, attackme, auth, incidents, metrics, transactions
+from app.routers import accounts, assistant, attackme, auth, incidents, metrics, selftest, transactions
 
 app = FastAPI(title="Phenix API")
 
@@ -26,6 +26,7 @@ api.include_router(accounts.router)
 api.include_router(incidents.router)
 api.include_router(metrics.router)
 api.include_router(assistant.router)
+api.include_router(selftest.router)
 # Faille volontaire (injection SQL) pour la démonstration : retirer cette ligne pour la désactiver
 api.include_router(attackme.router)
 

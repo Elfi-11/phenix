@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     prometheus_url: str = "http://prometheus:9090"
     # Serveur de l'assistant RAG, joignable par le réseau Docker "assistant"
     rag_url: str = "http://rag:8000"
+    # Service de transaction de test, joignable par le réseau Docker "app"
+    selftest_url: str = "http://selftest:9000"
 
 
 settings = Settings()

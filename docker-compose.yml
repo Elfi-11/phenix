@@ -43,6 +43,29 @@ services:
       retries: 3
       start_period: 10s
 
+  # Transaction de test automatique : paie 1 € toutes les 10 s (preuve de reprise, Axe 1)
+  selftest:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "selftest.py"]
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-.env.example}
+    environment:
+      - TZ=UTC
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
   nginx:
     image: nginx:1.30.4-alpine
     restart: unless-stopped
