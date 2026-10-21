@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.crud import transactions as crud_transactions
 from app.database import get_db
 from app.models import User
@@ -13,10 +15,12 @@ from app.security import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
+logger = logging.getLogger("phenix.transactions")
+
 
 @router.post("", response_model=TransactionRead, status_code=201)
 def create_transaction(data: TransactionCreate, response: Response,
-                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         # L'IP réelle derrière le WAF reste à définir : aucun en-tête client n'est cru ici.
         payment, created = crud_transactions.create_payment(db, data, user.id, client_ip=None)
