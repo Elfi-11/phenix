@@ -41,16 +41,18 @@ def load_data(path, labelled=False):
     if not (df.auth_failures_per_min % 1 == 0).all():
         raise ValueError("Les échecs d'authentification doivent être des comptes entiers")
     if len(df) > 1 and not df.timestamp.diff().dropna().eq(pd.Timedelta(minutes=1)).all():
-        raise ValueError("La V1 attend une observation toutes les minutes, sans trou")
+        raise ValueError("Le contrat attend une observation toutes les minutes, sans trou")
     if labelled and not df.is_anomaly.isin([0, 1]).all():
         raise ValueError("is_anomaly doit valoir 0 ou 1")
     return df
 
 
-def split_data(df):
-    """Protocole fixé : 4 jours train, 4 calibration, 3 validation, reste test."""
+def split_data(df, train_days=4, calibration_days=4, validation_days=3):
+    """Découpage chronologique explicite ; valeurs par défaut compatibles V1."""
+    if any(not isinstance(n, int) or n <= 0 for n in [train_days, calibration_days, validation_days]):
+        raise ValueError("Les durées de découpage doivent être des entiers positifs")
     start = df.timestamp.iloc[0]
-    borders = [start + pd.Timedelta(days=n) for n in [4, 8, 11]]
+    borders = [start + pd.Timedelta(days=n) for n in [train_days, train_days + calibration_days, train_days + calibration_days + validation_days]]
     parts = {
         "train": df[df.timestamp < borders[0]].copy(),
         "calibration": df[(df.timestamp >= borders[0]) & (df.timestamp < borders[1])].copy(),
@@ -58,7 +60,7 @@ def split_data(df):
         "test": df[df.timestamp >= borders[2]].copy(),
     }
     if any(part.empty for part in parts.values()):
-        raise ValueError("Le protocole attend plus de 11 jours de données")
+        raise ValueError("Pas assez de données pour les durées du protocole")
     if parts["train"].is_anomaly.ne(0).any():
         raise ValueError("Le train doit être une période identifiée comme normale")
     # Ne pas partager un incident continu entre deux parties.
@@ -95,11 +97,11 @@ def evaluate(df, scores, threshold):
             "false_alert_runs": false_episodes, "episodes": episodes}
 
 
-def train(csv_path, out, quantile=0.995):
+def train(csv_path, out, quantile=0.995, train_days=4, calibration_days=4, validation_days=3):
     if not 0 < quantile < 1:
         raise ValueError("Le quantile doit être entre 0 et 1 exclus")
     df = load_data(csv_path, labelled=True)
-    parts = split_data(df)
+    parts = split_data(df, train_days, calibration_days, validation_days)
     out = Path(out)
     if out.exists() and any(out.iterdir()):
         raise ValueError("Le dossier de sortie doit être vide ou nouveau pour préserver les essais")
@@ -115,7 +117,7 @@ def train(csv_path, out, quantile=0.995):
     # Signe inversé : un score élevé représente une observation plus inhabituelle.
     threshold = float(np.quantile(-model.score_samples(normal_cal), quantile))
     metadata = {"model": "IsolationForest", "features": FEATURES, "threshold": threshold,
-                "quantile": quantile, "seed": 42, "n_estimators": 200, "max_samples": 256,
+                "quantile": quantile, "protocol_days": {"train": train_days, "calibration": calibration_days, "validation": validation_days}, "seed": 42, "n_estimators": 200, "max_samples": 256,
                 "source_sha256": hashlib.sha256(Path(csv_path).read_bytes()).hexdigest(),
                 "data_origin": "synthetic", "training_seconds": training_seconds,
                 "versions": {"python": platform.python_version(), "sklearn": sklearn.__version__,
@@ -171,6 +173,9 @@ def main():
     tr.add_argument("--csv", required=True)
     tr.add_argument("--out", required=True)
     tr.add_argument("--quantile", type=float, default=0.995)
+    tr.add_argument("--train-days", type=int, default=4)
+    tr.add_argument("--calibration-days", type=int, default=4)
+    tr.add_argument("--validation-days", type=int, default=3)
     sc = sub.add_parser("score")
     sc.add_argument("--csv", required=True)
     sc.add_argument("--model", required=True)
@@ -178,7 +183,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "train":
-            train(args.csv, args.out, args.quantile)
+            train(args.csv, args.out, args.quantile, args.train_days, args.calibration_days, args.validation_days)
         else:
             score(args.csv, args.model, args.out)
     except (ValueError, OSError) as exc:

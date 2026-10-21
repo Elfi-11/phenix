@@ -16,4 +16,5 @@ dist/
 backups/
 
 !.env.enc
-/backend/ML/experiments
+
+/backend/ML/experiments/
