@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     # Mot de passe commun des comptes fictifs de démo ; si absent, aucune donnée de démo n'est créée
     demo_user_password: str | None = None
+    # Joignable par le réseau Docker "app" (jamais exposé au navigateur)
+    prometheus_url: str = "http://prometheus:9090"
 
 
 settings = Settings()
