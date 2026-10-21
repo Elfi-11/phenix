@@ -14,6 +14,8 @@ DEMO_USERS = [
     ("alice_client", "CLIENT", Decimal("1500.00")),
     ("bob_client", "CLIENT", Decimal("800.00")),
     ("marchand_beta", "MERCHANT", Decimal("0.00")),
+    ("admin", "ADMIN", Decimal("0.00")),
+    ("service_remediation", "SERVICE", Decimal("0.00")),
 ]
 
 

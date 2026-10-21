@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, computed_field
 
-Role = Literal["CLIENT", "MERCHANT", "ADMIN"]
+# SERVICE : comptes des programmes automatiques (ML, remédiation), limités aux incidents
+Role = Literal["CLIENT", "MERCHANT", "ADMIN", "SERVICE"]
 AccountStatus = Literal["ACTIVE", "FROZEN"]
 TransactionStatus = Literal["PENDING", "SUCCESS", "FAILED", "REJECTED_FRAUD"]
 EventType = Literal["AUTH_FAILURE", "WAF_BLOCK", "ML_ANOMALY_DETECTED", "REMEDIATION_TRIGGERED"]
