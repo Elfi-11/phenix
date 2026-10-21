@@ -1,0 +1,103 @@
+# Action : restaurer la base depuis un dump (action destructive : confirm=yes obligatoire)
+# Usage  : bash infra/ansible/run.sh restore confirm=yes
+#          bash infra/ansible/run.sh restore confirm=yes dump=dump_20261020_101500.sql
+# Avant de restaurer, l'état actuel est sauvegardé dans backups/pre_restore_<date>.sql (preuve post-incident).
+- name: Restaurer la base de données
+  hosts: localhost
+  gather_facts: false
+  vars:
+    dump_file: "{{ dump | default('latest.sql') }}"
+  tasks:
+    - name: Contrôle des paramètres
+      ansible.builtin.assert:
+        that:
+          - confirm is defined
+          - confirm == 'yes'
+          - dump_file is match('^(latest|dump_[0-9]{8}_[0-9]{6})\.sql$')
+        fail_msg: "Ajouter confirm=yes. Le dump doit s'appeler latest.sql ou dump_AAAAMMJJ_HHMMSS.sql"
+        quiet: true
+
+    - name: Le dump existe
+      ansible.builtin.stat:
+        path: "{{ backups_dir }}/{{ dump_file }}"
+      register: _dump
+
+    - name: Vérifier le dump
+      ansible.builtin.assert:
+        that:
+          - _dump.stat.exists
+          - _dump.stat.size > 0
+        fail_msg: "Dump introuvable ou vide : {{ backups_dir }}/{{ dump_file }}"
+        quiet: true
+
+    - name: Trouver la base
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: db
+    - ansible.builtin.set_fact:
+        db_id: "{{ container_id }}"
+
+    - name: Trouver le backend
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: backend
+    - ansible.builtin.set_fact:
+        backend_id: "{{ container_id }}"
+
+    - name: Horodatage
+      ansible.builtin.set_fact:
+        ts: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+
+    - name: Restauration
+      block:
+        - name: Sauvegarder l'état actuel avant de restaurer
+          ansible.builtin.shell: >
+            set -o pipefail;
+            docker exec {{ db_id }} sh -c 'pg_dump -U "$POSTGRES_USER" --clean --if-exists "$POSTGRES_DB"'
+            > "{{ backups_dir }}/pre_restore_{{ ts }}.sql"
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Arrêter le backend (plus d'écriture pendant la restauration)
+          ansible.builtin.command:
+            argv: [docker, stop, "{{ backend_id }}"]
+          changed_when: true
+
+        - name: Copier le dump dans la base
+          ansible.builtin.command:
+            argv: [docker, cp, "{{ backups_dir }}/{{ dump_file }}", "{{ db_id }}:/tmp/restore.sql"]
+          changed_when: true
+
+        - name: Restaurer (tout ou rien)
+          ansible.builtin.command:
+            argv:
+              - docker
+              - exec
+              - "{{ db_id }}"
+              - sh
+              - -c
+              - 'psql --single-transaction -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/restore.sql'
+          changed_when: true
+
+        - name: Supprimer la copie du dump
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ db_id }}", rm, -f, /tmp/restore.sql]
+          changed_when: true
+      always:
+        - name: Redémarrer le backend (même en cas d'échec)
+          ansible.builtin.command:
+            argv: [docker, start, "{{ backend_id }}"]
+          changed_when: true
+
+    - name: Attendre le backend
+      ansible.builtin.include_tasks: ../tasks/wait_healthy.yml
+      vars:
+        cid: "{{ backend_id }}"
+
+    - name: Recharger nginx
+      ansible.builtin.include_tasks: ../tasks/reload_nginx.yml
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "OK : base restaurée depuis {{ dump_file }} (état précédent : backups/pre_restore_{{ ts }}.sql)"

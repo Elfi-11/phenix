@@ -82,8 +82,7 @@ class AccountStatusUpdate(BaseModel):
 class TransactionCreate(BaseModel):
     # Généré par le client (ex: UUID) et renvoyé tel quel en cas de retry
     idempotency_key: str = Field(min_length=8, max_length=64)
-    # À vérifier côté serveur : le compte émetteur doit appartenir à l'utilisateur connecté
-    sender_account_id: int
+    # Pas de compte émetteur : c'est toujours le compte unique de l'utilisateur connecté
     receiver_account_id: int
     amount: Decimal = Amount
     # Pas de `client_ip` ni de `status` : déterminés par le serveur, jamais par le client

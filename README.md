@@ -9,7 +9,9 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 | Frontend | React + Vite | Interface |
 | Backend | Python, FastAPI | API |
 | Base de données | PostgreSQL 14 | Données |
-| Reverse proxy | Nginx | Seul point d'entrée exposé (port 8080), journaux d'accès en JSON |
+| Proxy d'entrée | Caddy (sur le PC hôte, hors Docker) | Seul point d'entrée du réseau (port 8080), ajoute l'IP réelle du client (`X-Forwarded-For`) |
+| WAF | ModSecurity + OWASP CRS (`owasp/modsecurity-crs`) | Filtre les requêtes, publié sur `127.0.0.1:8081` seulement |
+| Reverse proxy | Nginx | Derrière le WAF, route vers le frontend et l'API, journaux d'accès en JSON |
 | Sauvegardes | `pg_dump` (service `pg_dump`) | Dump toutes les 5 min, 12 versions conservées |
 | Métriques | Prometheus + cAdvisor | Métriques des services et des conteneurs |
 | Logs | Loki + Promtail | Logs des conteneurs |
@@ -31,6 +33,7 @@ phenix/
 ├── frontend/                 # application React (code dans src/)
 ├── backups/                  # dumps de la base (ignoré par Git)
 └── infra/
+    ├── caddy/                # proxy d'entrée (Caddyfile)
     ├── nginx/blocklist/      # adresses bloquées par la remédiation
     ├── observability/        # Prometheus, Loki, Promtail, Grafana
     └── secrets/              # scripts de chiffrement / déchiffrement
@@ -40,26 +43,45 @@ phenix/
 
 | Réseau | Contenu | Accès |
 |---|---|---|
-| `dmz` | nginx | Publié sur le port 8080 |
+| `dmz` | WAF | Publié sur `127.0.0.1:8081` (Caddy écoute sur le port 8080 du PC hôte) |
 | `app` | frontend, backend, nginx | Interne |
 | `data` | backend, base, sauvegardes, pgAdmin | Interne |
 | `ops` | supervision | Ports publiés sur 127.0.0.1 uniquement |
 
 ## Lancer le projet
 
-**Prérequis :** Git, Docker Desktop, [age](https://github.com/FiloSottile/age) et [SOPS](https://github.com/getsops/sops).
+**Prérequis :** Git, Docker Desktop, [SOPS](https://github.com/getsops/sops) et [Caddy](https://caddyserver.com).
 
-1. Récupérer le dépôt.
+**1. Installer SOPS et Caddy** (une seule fois)
 
-```bash
-git clone https://github.com/Elfi-11/phenix.git
-cd phenix
+```powershell
+winget install --id SecretsOPerationS.SOPS -e
+winget install --id CaddyServer.Caddy -e
 ```
 
-2. Déposer la clé de l'équipe (à demander à Yannick, jamais dans Git) dans `~/.sops/keys.txt`
-   (Windows : `%USERPROFILE%\.sops\keys.txt`).
+Fermer et rouvrir VS Code, puis vérifier :
 
-3. Démarrer. Le script déchiffre `.env.enc` dans un fichier temporaire, lance les conteneurs puis supprime le fichier.
+```powershell
+sops --version
+caddy version
+```
+
+**2. Installer la clé** (une seule fois, à demander à Yannick en privé, jamais dans Git)
+
+```powershell
+New-Item -ItemType Directory "$HOME\.sops"
+```
+
+Enregistrer la clé dans `%USERPROFILE%\.sops\keys.txt` (Linux/WSL : `~/.sops/keys.txt`).
+
+**3. Récupérer le code**
+
+```bash
+git clone https://github.com/Elfi-11/phenix.git   # première fois
+git pull                                          # ensuite
+```
+
+**4. Démarrer**
 
 ```powershell
 # Windows
@@ -71,9 +93,44 @@ cd phenix
 infra/secrets/start.sh
 ```
 
-Toujours démarrer avec ce script : un `docker compose up` direct utiliserait les valeurs factices de `.env.example`.
+Le script remplace `docker compose up -d --build` : il déchiffre `.env.enc`, lance le build et les conteneurs avec les vrais secrets, supprime le fichier temporaire, puis démarre Caddy (port 8080).
+**Ne jamais lancer `docker compose up` directement** : il utiliserait les valeurs factices de `.env.example` et le backend planterait.
+
+**5. Vérifier**
+
+```powershell
+docker compose ps
+```
+
+**6. Arrêter**
+
+```powershell
+docker compose down
+```
 
 Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets/README.md).
+
+Durcissement : [docs/durcissement.md](docs/durcissement.md). Installation complète sur un PC : [docs/installation.md](docs/installation.md). PC qui sert de point d'entrée et lance les actions de remédiation : [docs/pc-hote.md](docs/pc-hote.md).
+
+### En cas d'erreur
+
+| Message | Solution |
+|---|---|
+| `sops n'est pas reconnu` | Fermer et rouvrir VS Code |
+| `Clé introuvable` | Revoir l'étape 2 |
+| `parsing time ... \x0d` | `Remove-Item .env.enc; git checkout -- .env.enc`, puis relancer l'étape 4 |
+| Backend `Restarting`, `CHANGE_ME` dans `docker compose logs backend` | Démarré sans le script : relancer l'étape 4 |
+| `container phenix-nginx-1 is unhealthy` | Attendre 30 s, puis relancer l'étape 4 |
+| `caddy n'est pas reconnu` | Fermer et rouvrir VS Code |
+| Le port 8080 ne répond pas | Caddy arrêté : `Get-Process caddy`, sinon relancer l'étape 4 |
+
+## Point d'entrée (Caddy)
+
+Chaîne : client, puis Caddy (8080), puis WAF (`127.0.0.1:8081`), puis nginx, puis l'application.
+
+Docker Desktop sur Windows remplace l'IP du client par `172.20.0.1`. Caddy remet l'IP réelle dans `X-Forwarded-For` et écrase celui qu'un client enverrait. Le WAF n'étant publié que sur `127.0.0.1`, Caddy ne peut pas être contourné. Nginx retient l'IP du client grâce à `real_ip_header X-Forwarded-For` et `real_ip_recursive on`.
+
+Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis lancer `docker compose logs nginx --tail 3` : `src_ip` doit être l'IP du téléphone.
 
 ## Accès
 
@@ -86,11 +143,19 @@ Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets
 | http://localhost:9090 | Prometheus | Ce PC uniquement |
 | http://localhost:5050 | pgAdmin (profil `dev`) | Ce PC uniquement |
 
-pgAdmin ne démarre pas par défaut :
+pgAdmin ne démarre pas par défaut (outil d'admin, jamais exposé). Pour le lancer avec les secrets, puis effacer le `.env` en clair :
 
-```bash
-docker compose --profile dev up -d pgadmin
+```powershell
+.\infra\secrets\decrypt.ps1 -Force; $env:ENV_FILE=".env"; docker compose --env-file .env --profile dev up -d --no-deps pgadmin; Remove-Item .env; Remove-Item Env:ENV_FILE
 ```
+
+Afficher les identifiants (sans créer de fichier) :
+
+```powershell
+sops decrypt --input-type dotenv --output-type dotenv .env.enc | Select-String "PGADMIN|POSTGRES"
+```
+
+Ouvrir http://localhost:5050 (connexion avec `PGADMIN_EMAIL` / `PGADMIN_PASSWORD`), puis ajouter un serveur : hôte `db`, port `5432`, identifiants `POSTGRES_*`. Arrêter : `docker compose stop pgadmin`.
 
 ## Commandes utiles
 
@@ -101,6 +166,28 @@ docker compose down                # tout arrêter (les données sont conservée
 ```
 
 Pour reconstruire après une modification, relancer `start.ps1` (ou `start.sh`).
+
+## Actions de remédiation (Ansible)
+
+Actions lancées dans WSL, à la racine du dépôt : `bash infra/ansible/run.sh <action> key=value`. Prérequis WSL : `sudo apt install -y ansible python3`.
+
+| Action | Rôle | Paramètres |
+|---|---|---|
+| `restart` | Redémarre un service, attend qu'il soit sain, recharge nginx | `service=` |
+| `verify` | Vérifie qu'un service et la chaîne d'entrée répondent | `service=` |
+| `restore` | Restaure la base depuis un dump (état actuel sauvegardé avant) | `confirm=yes`, `dump=` |
+| `isolate` | Retire un service du réseau sans l'arrêter | `service=` |
+| `unisolate` | Reconnecte le service | `service=` |
+| `block_ip` | Bloque une adresse IP dans nginx (le client reçoit un 403) | `ip=`, `minutes=` (optionnel), `reason=` (optionnel) |
+| `unblock_ip` | Lève le blocage | `ip=` |
+| `list_blocked` | Affiche les adresses bloquées (vue admin) | aucun |
+| `purge_expired` | Retire les blocages expirés | aucun |
+
+Seuls les services `backend`, `frontend`, `nginx` et `db` sont autorisés. Blocage d'IP : une adresse à la fois ; sans `minutes`, le blocage dure jusqu'à `unblock_ip` ; avec `minutes`, il n'est retiré que par `purge_expired`. Ne sont jamais bloquées : `127.0.0.0/8`, `192.168.137.1`, `172.16.0.0/12`, `169.254.0.0/16`. Ne pas commiter `infra/nginx/blocklist/blocklist.conf` modifié. Détails : [infra/ansible/README.md](infra/ansible/README.md).
+
+## Alertes Grafana
+
+Quatre règles surveillent les logs du WAF (fichier `infra/observability/grafana/provisioning/alerting/rules.yml`, chargé au démarrage de Grafana) : rafale de 403 depuis une même IP, scan de chemins (404), erreurs 5xx et tentative d'injection SQL. Elles se consultent dans Grafana, Alerting, Alert rules, dossier Phenix. Détail : [docs/regles-siem.md](docs/regles-siem.md).
 
 ## Sauvegardes et restauration
 
@@ -118,6 +205,6 @@ Les dumps ne sont pas chiffrés : ils restent sur le PC hôte et sont ignorés p
 
 ## Supervision
 
-- **Métriques** : Prometheus lit les conteneurs (cAdvisor) et le backend (`/metrics`, à venir).
+- **Métriques** : Prometheus lit les conteneurs (cAdvisor) et le backend (`/metrics`).
 - **Logs** : Promtail envoie les logs des conteneurs à Loki. Les journaux nginx sont en JSON : dans Grafana, Explore, source Loki, requête `{service="nginx"} | json`.
 - Les données sont conservées 7 jours.

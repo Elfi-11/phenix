@@ -1,0 +1,23 @@
+# Entrée : svc (nom du service compose). Sortie : container_id
+- name: "Trouver le conteneur du service {{ svc }}"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - -aq
+      - --filter
+      - "label=com.docker.compose.project={{ compose_project }}"
+      - --filter
+      - "label=com.docker.compose.service={{ svc }}"
+  register: _found
+  changed_when: false
+
+- name: "Vérifier que le conteneur de {{ svc }} existe"
+  ansible.builtin.assert:
+    that: _found.stdout_lines | length > 0
+    fail_msg: "Aucun conteneur trouvé pour le service {{ svc }}"
+    quiet: true
+
+- name: "Retenir l'identifiant du conteneur de {{ svc }}"
+  ansible.builtin.set_fact:
+    container_id: "{{ _found.stdout_lines[0] }}"

@@ -1,0 +1,15 @@
+# Action : afficher les adresses bloquées (vue admin), sans rien modifier
+# Usage  : bash infra/ansible/run.sh list_blocked
+- name: Lister les adresses bloquées
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Lire la liste
+      ansible.builtin.command:
+        argv: [python3, "{{ blocklist_script }}", "{{ blocklist_file }}", list]
+      register: _list
+      changed_when: false
+
+    - name: Adresses bloquées
+      ansible.builtin.debug:
+        msg: "{{ _list.stdout_lines }}"

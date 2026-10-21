@@ -1,0 +1,41 @@
+# Action : reconnecter un service isolé à ses réseaux
+# Usage  : bash infra/ansible/run.sh unisolate service=backend
+- name: Reconnecter un service isolé
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Contrôle du paramètre
+      ansible.builtin.assert:
+        that:
+          - service is defined
+          - service in isolatable_services
+        fail_msg: "Service manquant ou refusé. Isolables : {{ isolatable_services | join(', ') }}"
+        quiet: true
+
+    - name: Retrouver les réseaux mémorisés
+      ansible.builtin.slurp:
+        src: "{{ backups_dir }}/isolation_{{ service }}.txt"
+      register: _saved
+
+    - name: Trouver le conteneur
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: "{{ service }}"
+
+    - name: Reconnecter à chaque réseau (avec le nom du service comme alias)
+      ansible.builtin.command:
+        argv: [docker, network, connect, --alias, "{{ service }}", "{{ item }}", "{{ container_id }}"]
+      loop: "{{ (_saved.content | b64decode).splitlines() | select | list }}"
+      changed_when: true
+
+    - name: Attendre qu'il soit prêt
+      ansible.builtin.include_tasks: ../tasks/wait_healthy.yml
+      vars:
+        cid: "{{ container_id }}"
+
+    - name: Recharger nginx
+      ansible.builtin.include_tasks: ../tasks/reload_nginx.yml
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "OK : {{ service }} reconnecté"
