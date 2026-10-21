@@ -1,0 +1,45 @@
+# Entrée : bl_args (arguments de scripts/blocklist.py : add / remove / purge ...)
+# Met à jour la liste, teste la configuration nginx, recharge. En cas d'échec : liste restaurée.
+- name: Modifier la liste de blocage puis recharger nginx
+  block:
+    - name: Mettre à jour la liste
+      ansible.builtin.command:
+        argv: "{{ ['python3', blocklist_script, blocklist_file, '--backup', backups_dir ~ '/blocklist_before.conf'] + bl_args }}"
+      register: _bl
+      changed_when: "'changed=yes' in _bl.stdout"
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "{{ _bl.stdout_lines }}"
+
+    - name: Tester puis recharger nginx
+      when: "'changed=yes' in _bl.stdout"
+      block:
+        - name: Trouver nginx
+          ansible.builtin.include_tasks: get_container.yml
+          vars:
+            svc: "{{ nginx_service }}"
+
+        - name: Tester la configuration nginx
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ container_id }}", nginx, -t]
+          changed_when: false
+
+        - name: Recharger nginx
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ container_id }}", nginx, -s, reload]
+          changed_when: true
+
+  rescue:
+    - name: Restaurer la liste d'avant (seulement si ce passage l'a modifiée)
+      ansible.builtin.copy:
+        src: "{{ backups_dir }}/blocklist_before.conf"
+        dest: "{{ blocklist_file }}"
+        remote_src: true
+        mode: "0644"
+      when: _bl is defined and (_bl.rc | default(1)) == 0 and 'changed=yes' in (_bl.stdout | default(''))
+      ignore_errors: true
+
+    - name: Échec
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result.msg | default('') }} {{ ansible_failed_result.stderr | default('') }}"
