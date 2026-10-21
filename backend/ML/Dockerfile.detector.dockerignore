@@ -1,0 +1,8 @@
+# Exclure tout, sauf le code et les dépendances du détecteur.
+**
+!detector/
+!detector/**
+
+# Exclure les fichiers Python temporaires.
+**/__pycache__/
+**/*.pyc

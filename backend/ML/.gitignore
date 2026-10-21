@@ -4,3 +4,10 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .env
+
+# Artefacts générés par les expériences ML
+/backend/ML/experiments/
+backend/ML/experiments/**/*.joblib
+backend/ML/experiments/**/*_predictions.csv
+backend/ML/experiments/**/*.alerts.jsonl
+backend/ML/experiments/**/replay*.csv
