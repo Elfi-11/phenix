@@ -9,13 +9,13 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import Account, User
 
-# Comptes fictifs de démonstration : (username, rôle, solde initial)
+# Comptes fictifs de démonstration : (username, rôle, solde initial ; None = pas de compte bancaire)
 DEMO_USERS = [
     ("alice_client", "CLIENT", Decimal("1500.00")),
     ("bob_client", "CLIENT", Decimal("800.00")),
     ("marchand_beta", "MERCHANT", Decimal("0.00")),
-    ("admin", "ADMIN", Decimal("0.00")),
-    ("service_remediation", "SERVICE", Decimal("0.00")),
+    ("admin", "ADMIN", None),
+    ("service_remediation", "SERVICE", None),
 ]
 
 
@@ -34,8 +34,9 @@ def seed_demo_data():
         for username, role, balance in DEMO_USERS:
             user = User(username=username, password_hash=password_hash, role=role)
             db.add(user)
-            db.flush()  # récupère user.id pour le compte
-            db.add(Account(user_id=user.id, balance=balance))
+            if balance is not None:
+                db.flush()  # récupère user.id pour le compte
+                db.add(Account(user_id=user.id, balance=balance))
         db.commit()
         print(f"create_db: {len(DEMO_USERS)} utilisateurs de démo créés")
 

@@ -10,12 +10,15 @@ from app.security import get_current_user, require_role
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
+# Comptes bancaires réservés aux rôles métier (ADMIN et SERVICE n'en ont pas)
+account_user = require_role("CLIENT", "MERCHANT")
+
 
 # Crée le compte de l'utilisateur connecté (201), ou renvoie l'existant (200)
 @router.post("", response_model=AccountRead, status_code=201)
 def create_account(
     response: Response,
-    user: User = Depends(get_current_user),
+    user: User = Depends(account_user),
     db: Session = Depends(get_db),
 ):
     account, created = crud_accounts.create_for_user(db, user.id)
@@ -27,7 +30,7 @@ def create_account(
 # Mon compte et mon solde (déclaré avant /{account_id}, sinon "me" serait lu comme un id)
 @router.get("/me", response_model=AccountRead)
 def my_account(
-    user: User = Depends(get_current_user),
+    user: User = Depends(account_user),
     db: Session = Depends(get_db),
 ):
     account = crud_accounts.get_for_user(db, user.id)

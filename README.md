@@ -166,10 +166,10 @@ Créés automatiquement au premier démarrage (base vide), tous avec le mot de p
 | `alice_client` | `CLIENT` | 1 500 € | Payer |
 | `bob_client` | `CLIENT` | 800 € | Payer |
 | `marchand_beta` | `MERCHANT` | 0 € | Recevoir les paiements |
-| `admin` | `ADMIN` | 0 € | Dashboard, gel des comptes |
-| `service_remediation` | `SERVICE` | 0 € | ML et moteur de remédiation : créer et résoudre des incidents uniquement |
+| `admin` | `ADMIN` | pas de compte bancaire | Dashboard, gel des comptes |
+| `service_remediation` | `SERVICE` | pas de compte bancaire | ML et moteur de remédiation : créer et résoudre des incidents uniquement |
 
-Seul le rôle `CLIENT` peut être créé depuis l'interface. Un compte bancaire par utilisateur (contrainte `UNIQUE` en base).
+Seul le rôle `CLIENT` peut être créé depuis l'interface. Un compte bancaire au plus par utilisateur (contrainte `UNIQUE` en base) ; seuls `CLIENT` et `MERCHANT` peuvent payer et consulter un compte.
 
 ### Routes de l'API
 
@@ -180,10 +180,10 @@ Documentation interactive : http://localhost:8080/docs. Routes protégées : en-
 | `POST /api/auth/register` | Public | Créer un compte `CLIENT` |
 | `POST /api/auth/login` | Public | Obtenir un token (30 min) |
 | `GET /api/auth/me` | Connecté | Utilisateur courant et son rôle |
-| `GET /api/accounts/me` | Connecté | Mon compte et mon solde |
+| `GET /api/accounts/me` | `CLIENT`, `MERCHANT` | Mon compte et mon solde |
 | `PATCH /api/accounts/{id}/status` | `ADMIN` | Geler / dégeler un compte |
-| `POST /api/transactions` | Connecté | Payer : `idempotency_key`, `receiver_account_id`, `amount` (le compte émetteur est celui de l'utilisateur) |
-| `GET /api/transactions` | Connecté | Mon historique |
+| `POST /api/transactions` | `CLIENT`, `MERCHANT` | Payer : `idempotency_key`, `receiver_account_id`, `amount` (le compte émetteur est celui de l'utilisateur) |
+| `GET /api/transactions` | `CLIENT`, `MERCHANT` | Mon historique |
 | `POST /api/incidents` | `SERVICE` | Signaler un incident |
 | `PATCH /api/incidents/{id}/resolve` | `SERVICE` | Déclarer le service rétabli (calcule le temps de reprise) |
 | `GET /api/incidents` | `ADMIN`, `SERVICE` | Liste des incidents (`?only_open=true`) |
