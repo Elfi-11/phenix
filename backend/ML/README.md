@@ -56,7 +56,7 @@ docker compose --env-file .env.example logs --tail=30 ollama-init
 docker compose --env-file .env.example exec ollama ollama list
 ```
 
-`ollama-init` en `Exited (0)` est normal. `rag` affiche l’aide et se termine : il reste un outil CLI. `logs -f` suit les logs sans rendre la main ; Ctrl+C quitte ce suivi sans arrêter les conteneurs.
+`ollama-init` en `Exited (0)` est normal. `rag` reste démarré : il sert l’assistant du dashboard (voir « Assistant dans le dashboard »). Les commandes CLI ci-dessous restent utilisables. `logs -f` suit les logs sans rendre la main ; Ctrl+C quitte ce suivi sans arrêter les conteneurs.
 
 Ne pas lancer une seconde préparation manuelle pendant que le serveur d’inférence utilise le même volume. Pour changer les modèles ou réparer un modèle supprimé : terminer les requêtes, arrêter les conteneurs IA, puis relancer le démarrage SOPS afin de refaire la préparation avant l’inférence.
 
@@ -75,6 +75,26 @@ Pour ces opérations IA uniquement, `--env-file .env.example` fournit les valeur
 Le corpus est monté en lecture seule depuis le dépôt. Après ajout, modification ou suppression d’un document, relancer `ingest`, sans build. L’ingestion demeure manuelle et conserve son index dans `rag_index`. Changer le code Python ou les dépendances nécessite un build, par exemple `docker compose --env-file .env.example build rag`.
 
 Les volumes sont gérés par Compose : `down` les conserve, `down -v` peut les supprimer, y compris les données métier. La migration ci-dessus ne supprime aucun volume.
+
+## Assistant dans le dashboard (API HTTP)
+
+Le service `rag` lance `python -m rag.server` : un serveur HTTP minimal (bibliothèque standard, `rag/server.py`) qui appelle la même fonction `answer()` que la commande `ask`.
+
+| Élément | Valeur |
+|---|---|
+| Route | `POST /ask` sur le port 8000, corps `{"question": "..."}` (10 Ko max) |
+| Réponse | Le résultat de `answer()` : `status` (`answered`, `insufficient_context`, `unverified_citations`), `answer`, `sources` |
+| Erreurs | 400 (JSON invalide, question vide, index absent), 500 (Ollama ou modèles indisponibles, sans détail brut) |
+| Accès | Réseau Docker `assistant` (interne), partagé uniquement avec le backend ; aucun port publié |
+| Appel depuis le front | `POST /api/assistant/ask`, réservé `ADMIN`, relayé par le backend (délai nginx 180 s) |
+
+Un seul thread : les questions sont traitées l’une après l’autre, une réponse prend 30 s à 1 min sur CPU. L’index doit exister (`ingest`) avant la première question.
+
+Test direct depuis le backend :
+
+```powershell
+docker compose --env-file .env.example exec backend python -c "import urllib.request,json; r=urllib.request.urlopen(urllib.request.Request('http://rag:8000/ask', json.dumps({'question':'Comment vérifier la collecte Prometheus ?'}).encode(), {'Content-Type':'application/json'}), timeout=180); print(r.read().decode())"
+```
 
 ## Vérifier l’isolation sur le poste
 
@@ -117,7 +137,7 @@ Seul `corpus/` est indexé (`.md`, `.txt` UTF-8 et PDF texte ; pas de fichiers c
 
 L’isolation réseau ne force pas mathématiquement une réponse à provenir des documents : le modèle conserve ses connaissances préentraînées. Les consignes de réponse fondée sur le contexte, les références et l’abstention restent nécessaires. La vérification des citations n’est pas une preuve de fidélité sémantique. Tester aussi une question absente du corpus.
 
-Le RAG ne consulte pas l’état réel des services, ne lance pas Ansible et n’a actuellement ni API HTTP, ni interface web, ni mémoire conversationnelle. Son futur raccordement au front devra préserver l’isolation réseau.
+Le RAG ne consulte pas l’état réel des services, ne lance pas Ansible et n’a pas de mémoire conversationnelle : chaque question est traitée seule. Son API HTTP n’est joignable que par le backend, qui la réserve aux administrateurs ; le RAG n’accède ni à la base, ni aux secrets, ni à Docker.
 
 ## Validation de cette livraison
 

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     demo_user_password: str | None = None
     # Joignable par le réseau Docker "app" (jamais exposé au navigateur)
     prometheus_url: str = "http://prometheus:9090"
+    # Serveur de l'assistant RAG, joignable par le réseau Docker "assistant"
+    rag_url: str = "http://rag:8000"
 
 
 settings = Settings()
