@@ -185,6 +185,10 @@ Actions lancées dans WSL, à la racine du dépôt : `bash infra/ansible/run.sh 
 
 Seuls les services `backend`, `frontend`, `nginx` et `db` sont autorisés. Blocage d'IP : une adresse à la fois ; sans `minutes`, le blocage dure jusqu'à `unblock_ip` ; avec `minutes`, il n'est retiré que par `purge_expired`. Ne sont jamais bloquées : `127.0.0.0/8`, `192.168.137.1`, `172.16.0.0/12`, `169.254.0.0/16`. Ne pas commiter `infra/nginx/blocklist/blocklist.conf` modifié. Détails : [infra/ansible/README.md](infra/ansible/README.md).
 
+## Alertes Grafana
+
+Quatre règles surveillent les logs du WAF (fichier `infra/observability/grafana/provisioning/alerting/rules.yml`, chargé au démarrage de Grafana) : rafale de 403 depuis une même IP, scan de chemins (404), erreurs 5xx et tentative d'injection SQL. Elles se consultent dans Grafana, Alerting, Alert rules, dossier Phenix. Détail : [docs/regles-siem.md](docs/regles-siem.md).
+
 ## Sauvegardes et restauration
 
 Le service `pg_dump` sauvegarde la base toutes les 5 minutes dans `backups/` :
