@@ -1,17 +1,84 @@
-function FormulaireConnexion(){
+import { useState } from 'react'
+import { Link } from 'react-router'
+
+
+function FormulaireConnexion({ onLogin }) {
+    const [username, setUsername] = useState('')
+    const [password, setPassword] = useState('')
+    const [erreur, setErreur] = useState(null)
+
+    async function handleSubmit(e) {
+        e.preventDefault()
+        setErreur(null)
+
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        })
+
+        if (!res.ok) {
+            setErreur('Identifiants invalides')
+            return
+        }
+
+        const data = await res.json()
+        onLogin(data.access_token)
+    }
+
+
     return (
-        <form class="max-w-sm mx-auto">
-            <div class="mb-5">
-                <label for="email" class="block mb-2.5 text-sm font-medium text-heading">Your email</label>
-                <input type="email" id="email" class="bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body" placeholder="name@flowbite.com" required />
-            </div>
-            <div class="mb-5">
-                <label for="password" class="block mb-2.5 text-sm font-medium text-heading">Your password</label>
-                <input type="password" id="password" class="bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body" placeholder="••••••••" required />
-            </div>
-            <button type="submit" class="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-base text-sm px-4 py-2.5 focus:outline-none">Submit</button>
-        </form>
+        <div className="max-w-sm w-full p-8 rounded-2xl border-2 border-amber-50 shadow-2xl shadow-orange-500/40 bg-linear-to-br from-amber-400 via-orange-600 to-red-900">
+            <form onSubmit={handleSubmit}>
+                <h1 className="mb-6 text-2xl font-bold text-center text-white drop-shadow">Connexion</h1>
+
+                <div className="mb-5">
+                    <label htmlFor="username" className="block mb-2 text-sm font-medium text-white">
+                        Nom d'utilisateur
+                    </label>
+                    <input
+                        type="text"
+                        id="username"
+                        className="block w-full px-3 py-2.5 text-sm text-white bg-black/40 border border-amber-300/50 rounded-lg placeholder:text-orange-100/60 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        placeholder="Nom Utilisateur"
+                        required
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                    />
+                </div>
+
+                <div className="mb-6">
+                <label htmlFor="password" className="block mb-2 text-sm font-medium text-white">
+                    Mot de passe
+                </label>
+                <input
+                    type="password"
+                    id="password"
+                    className="block w-full px-3 py-2.5 text-sm text-white bg-black/40 border border-amber-300/50 rounded-lg placeholder:text-orange-100/60 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    placeholder="••••••••"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+
+                />
+                </div>
+
+                {erreur && <p className="mb-4 text-sm font-medium text-amber-100">{erreur}</p>}
+
+                <button
+                    type="submit"
+                    className="w-full px-4 py-2.5 text-sm font-semibold text-white rounded-lg shadow-lg bg-linear-to-r from-red-700 to-orange-500 hover:from-red-800 hover:to-orange-600 focus:outline-none focus:ring-4 focus:ring-amber-300/60 transition-colors"
+                    >
+                    Se connecter
+                </button>
+
+                <Link to="/inscription" className="block mt-4 text-sm text-center text-amber-100 underline hover:text-white">
+                    Créer un compte
+                </Link>
+
+            </form>
+        </div>
     )
 }
 
-export default FormulaireConnexion;
+export default FormulaireConnexion

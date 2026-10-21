@@ -37,7 +37,7 @@ def create_transaction(data: TransactionCreate, response: Response,
 
 @router.get("", response_model=list[TransactionRead])
 def list_transactions(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
-                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return crud_transactions.list_for_user(db, user.id, offset, limit)
 
 
