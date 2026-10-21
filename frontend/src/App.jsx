@@ -8,7 +8,7 @@ import fond from './assets/phenixBackground.png'
 function App() {
   // Token JWT gardé en mémoire uniquement : perdu au rechargement
   const [token, setToken] = useState(null)
-
+  const [user, setUser] = useState(null)
   return (
     <BrowserRouter>
       <main
