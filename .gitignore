@@ -18,3 +18,8 @@ backups/
 !.env.enc
 
 /backend/ML/experiments/
+/remediation/sql-runtime.lock
+
+/remediation/state-*.json
+/remediation/state-*.tmp
+/remediation/sql-runtime.lock
