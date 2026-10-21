@@ -90,7 +90,7 @@ def traiter(token: str, alerte: dict) -> None:
     ok_action, sortie = action_ansible("block_ip", ip=alerte["ip"], reason="bruteforce")
     print(f"  block_ip : {'OK' if ok_action else 'ÉCHEC'}")
 
-    ok_verif, _ = action_ansible("verify", service="backend")
+    ok_verif, _ = action_ansible("verify", service="backend", check_url="http://172.19.64.1:8080/health")
     print(f"  verify   : {'OK' if ok_verif else 'ÉCHEC'}")
 
     if ok_action and ok_verif:
