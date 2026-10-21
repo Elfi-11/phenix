@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import TrafficChart from './TrafficChart'
+import Assistant from './Assistant'
 
 // Rafraîchissement : assez rapide pour voir en direct le passage OK -> panne -> OK pendant la démo
 const REFRESH_MS = 5000
@@ -16,12 +17,11 @@ function formatTime(iso) {
 }
 
 function Dashboard({ token }) {
-  const [apiUp, setApiUp] = useState(null) // null = pas encore vérifié
+  const [apiUp, setApiUp] = useState(null) 
   const [incidents, setIncidents] = useState([])
   const [lastCheck, setLastCheck] = useState(null)
   const [traffic, setTraffic] = useState([])
-  const [trafficStale, setTrafficStale] = useState(false) // dernière lecture échouée : on garde l'ancien graphique
-
+  const [trafficStale, setTrafficStale] = useState(false) 
   useEffect(() => {
     async function refresh() {
       // 1. État de l'API : /health traverse toute la chaîne (Caddy, WAF, nginx, backend)
@@ -140,6 +140,9 @@ function Dashboard({ token }) {
           </div>
         )}
       </div>
+
+      {/* Assistant RAG */}
+      <Assistant token={token} />
 
       {/* Grafana : nouvel onglet (accessible seulement depuis le PC hôte, volontairement) */}
       <a

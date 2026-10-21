@@ -35,6 +35,7 @@ services:
     networks:
       - app
       - data
+      - assistant
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -329,10 +330,14 @@ services:
         condition: service_completed_successfully
     security_opt:
       - no-new-privileges:true
+    # Serveur HTTP de l'assistant (POST /ask sur le port 8000), appelé uniquement par le backend
+    command: ["python", "-m", "rag.server"]
+    restart: unless-stopped
+    expose:
+      - "8000"
     networks:
       - rag
-    # Outil CLI ponctuel : up affiche l'aide puis termine avec le code 0.
-    command: ["python", "-m", "rag", "--help"]
+      - assistant
 
 volumes:
   # Volumes gérés par Compose : modèles préparés par ollama-init, indexation manuelle.
@@ -349,6 +354,9 @@ volumes:
 networks:
   # Réseau d'inférence isolé de la connectivité externe.
   rag:
+    internal: true
+  # Backend <-> assistant uniquement : le RAG ne voit ni la base, ni le front, ni la supervision
+  assistant:
     internal: true
   # Seul le téléchargeur ponctuel utilise ce réseau avec accès externe.
   model_download: {}

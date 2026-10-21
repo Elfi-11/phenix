@@ -153,7 +153,7 @@ Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis la
 |---|---|
 | `/` | Connexion (puis redirection selon le rôle) |
 | `/inscription` | Création de compte (toujours un `CLIENT`) |
-| `/dashboard` | Supervision, réservée aux `ADMIN` : état de l'API, trafic (requêtes et erreurs par seconde, 15 min), incidents et temps de reprise. Rafraîchi toutes les 5 s |
+| `/dashboard` | Supervision, réservée aux `ADMIN` : état de l'API, trafic (requêtes et erreurs par seconde, 15 min), incidents et temps de reprise (rafraîchis toutes les 5 s), assistant RAG en chatbox |
 
 Le token JWT est gardé en mémoire uniquement : un rechargement de la page déconnecte.
 
@@ -188,9 +188,14 @@ Documentation interactive : http://localhost:8080/docs. Routes protégées : en-
 | `PATCH /api/incidents/{id}/resolve` | `SERVICE` | Déclarer le service rétabli (calcule le temps de reprise) |
 | `GET /api/incidents` | `ADMIN`, `SERVICE` | Liste des incidents (`?only_open=true`) |
 | `GET /api/metrics/traffic` | `ADMIN` | Trafic des 15 dernières minutes, relayé depuis Prometheus |
+| `POST /api/assistant/ask` | `ADMIN` | Question à l'assistant RAG (`{ "question": "..." }`), relayée au service `rag` ; réponse en 30 s à 1 min |
 | `GET /api/attackme/search` | Connecté | **Faille volontaire (injection SQL) pour la démonstration.** Permet de lire toute la base. À désactiver hors démo : retirer `api.include_router(attackme.router)` dans `backend/app/main.py` |
 
 Paiement rejoué avec la même `idempotency_key` (retry après incident) : renvoyé tel quel (200), sans second débit.
+
+### Assistant RAG dans le dashboard
+
+Chaîne : chatbox du dashboard, `POST /api/assistant/ask` (backend, `ADMIN`), puis service `rag` (`POST /ask`, réseau Docker interne `assistant`), puis Ollama (réseau interne `rag`). Le RAG n'est joignable que par le backend et n'a accès ni à la base, ni aux secrets, ni à Docker : il conseille, il n'agit pas. Une réponse prend 30 s à 1 min sur CPU. Prérequis : modèles téléchargés (`ollama-init`) et index construit (`ingest`). Détails : [backend/ML/README.md](backend/ML/README.md).
 
 ## pgAdmin (optionnel)
 

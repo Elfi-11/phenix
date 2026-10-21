@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import FormulaireConnexion from './components/FormulaireConnexion'
 import FormulaireInscription from './components/FormulaireInscription'
 import Dashboard from './components/Dashboard'
+import Paiement from './components/Paiement'
 import fond from './assets/phenixBackground.png'
 
 function App() {
@@ -24,12 +25,28 @@ function App() {
     setUser(await res.json())
   }
 
+  // Le token n'existe qu'en mémoire : l'effacer suffit à déconnecter (les routes protégées renvoient vers /)
+  function handleLogout() {
+    setToken(null)
+    setUser(null)
+  }
+
   return (
     <BrowserRouter>
       <main
         className="min-h-screen flex items-center justify-center bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: `url(${fond})` }}
       >
+        {/* Visible sur toutes les pages dès qu'on est connecté (client, admin, compte technique) */}
+        {user && (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="fixed top-4 right-4 z-10 px-4 py-2 text-sm font-semibold text-white rounded-lg border-2 border-amber-50 bg-black/60 hover:bg-black/80 focus:outline-none focus:ring-4 focus:ring-amber-300/60 transition-colors"
+          >
+            Se déconnecter ({user.username})
+          </button>
+        )}
         <Routes>
           <Route
             path="/"
@@ -42,7 +59,13 @@ function App() {
                 // Compte des programmes automatiques : pas d'interface (le backend refuse aussi ses accès métier)
                 <p className="text-2xl font-bold text-white drop-shadow">Compte technique : pas d'accès à l'interface</p>
               ) : (
-                <p className="text-2xl font-bold text-white drop-shadow">Connecté</p>
+                // Un seul élément par branche : le message et la carte sont regroupés dans une colonne
+                <div className="flex flex-col items-center gap-4 w-full">
+                  <p className="text-xl font-semibold text-center text-amber-100 drop-shadow">
+                    Bonne renaissance, {user.username} 
+                  </p>
+                  <Paiement token={token} />
+                </div>
               )
             }
           />
