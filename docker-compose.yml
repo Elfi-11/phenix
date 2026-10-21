@@ -116,7 +116,7 @@ services:
         while true; do
           F=/backups/dump_$$(date +%Y%m%d_%H%M%S).sql
           if PGPASSWORD="$$POSTGRES_PASSWORD" pg_dump -h db -U "$$POSTGRES_USER" \
-               --clean --if-exists "$$POSTGRES_DB" > "$$F.tmp"; then
+              --clean --if-exists "$$POSTGRES_DB" > "$$F.tmp"; then
             mv "$$F.tmp" "$$F"
             cp "$$F" /backups/latest.sql
           else
