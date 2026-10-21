@@ -1,14 +1,15 @@
-"""Accès à la base : création, consultation et statut des comptes."""
+"""Accès à la base : création, consultation et statut des comptes (un compte par utilisateur)."""
 
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Account
 
 
-# Erreur métier transmise au router, qui la convertira en réponse HTTP.
+# Erreur métier, convertie en réponse HTTP par le router
 class AccountError(Exception):
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
@@ -16,80 +17,42 @@ class AccountError(Exception):
         super().__init__(detail)
 
 
-# Recherche par identifiant.
-# Les droits de consultation sont contrôlés dans le router.
+# Les droits de consultation sont vérifiés dans le router
 def get_by_id(db: Session, account_id: int) -> Account | None:
     return db.get(Account, account_id)
 
 
-# Le fonctionnement retenu prévoit un compte par utilisateur.
-# On signale les doublons plutôt que de choisir arbitrairement un compte.
+# user_id est UNIQUE en base : au plus un compte
 def get_for_user(db: Session, user_id: int) -> Account | None:
-    accounts = db.scalars(
-        select(Account).where(Account.user_id == user_id)
-    ).all()
-
-    if len(accounts) > 1:
-        raise AccountError(
-            409,
-            "Plusieurs comptes existent pour cet utilisateur",
-        )
-
-    return accounts[0] if accounts else None
+    return db.scalar(select(Account).where(Account.user_id == user_id))
 
 
-# Création du compte de l'utilisateur connecté.
-# Le booléen indique au router si le compte vient d'être créé.
+# Renvoie (compte, True si créé à l'instant)
 def create_for_user(db: Session, user_id: int) -> tuple[Account, bool]:
+    account = get_for_user(db, user_id)
+    if account is not None:
+        return account, False
+
+    # Solde et statut fixés côté serveur : le client ne peut pas s'attribuer d'argent
+    account = Account(user_id=user_id, balance=Decimal("0.00"), status="ACTIVE")
+    db.add(account)
     try:
-        # Verrou PostgreSQL conservé jusqu'au commit ou au rollback.
-        # Deux appels simultanés pour le même utilisateur sont traités
-        # successivement, pour éviter de créer deux comptes par cette fonction.
-        db.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtextextended(:key, 0))"
-            ),
-            {"key": f"phenix.account:{user_id}"},
-        )
-
-        # Si le compte existe déjà, on le retourne sans le modifier.
-        # Le commit libère le verrou, même sans nouvelle écriture.
-        account = get_for_user(db, user_id)
-
-        if account is not None:
-            db.commit()
-            return account, False
-
-        # Le propriétaire, le solde initial et le statut sont fixés
-        # côté serveur : le client ne peut pas s'attribuer de l'argent.
-        account = Account(
-            user_id=user_id,
-            balance=Decimal("0.00"),
-            status="ACTIVE",
-        )
-        db.add(account)
         db.commit()
-        return account, True
-
-    except Exception:
-        # Annule les écritures éventuelles et libère le verrou.
+    except IntegrityError:
+        # Deux créations simultanées : la contrainte UNIQUE a refusé la seconde, on renvoie l'existant
         db.rollback()
-        raise
+        return get_for_user(db, user_id), False
+    return account, True
 
 
-# Modification administrative du statut, sans toucher au solde.
-# Le router vérifie le rôle ADMIN et le schéma valide le nouveau statut.
+# Gel / dégel (ADMIN vérifié dans le router), sans toucher au solde
 def update_status(
     db: Session,
     account_id: int,
     new_status: str,
 ) -> Account:
     try:
-        # Le verrou de ligne coordonne le changement de statut avec
-        # les paiements, qui verrouillent également les comptes.
-        # populate_existing recharge les valeurs même si le compte
-        # était déjà présent dans la session SQLAlchemy.
+        # Verrou de ligne partagé avec les paiements ; populate_existing force la relecture en base
         account = db.scalar(
             select(Account)
             .where(Account.id == account_id)

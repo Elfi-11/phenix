@@ -1,0 +1,18 @@
+# Action : lever le blocage d'une adresse IP
+# Usage  : bash infra/ansible/run.sh unblock_ip ip=203.0.113.5
+- name: Débloquer une adresse IP
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Contrôle du paramètre
+      ansible.builtin.assert:
+        that:
+          - ip is defined
+          - (ip | string) is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+        fail_msg: "Paramètre invalide. Attendu : ip=A.B.C.D"
+        quiet: true
+
+    - name: Appliquer le déblocage
+      ansible.builtin.include_tasks: ../tasks/blocklist_apply.yml
+      vars:
+        bl_args: "{{ ['remove', '--ip', ip | string] }}"

@@ -7,8 +7,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 action="${1:-}"
 case "$action" in
-  restart|verify|restore|isolate|unisolate) ;;
-  *) echo "Action refusée ou manquante : '$action' (autorisées : restart verify restore isolate unisolate)" >&2; exit 2 ;;
+  restart|verify|restore|isolate|unisolate|block_ip|unblock_ip|list_blocked|purge_expired) ;;
+  *) echo "Action refusée ou manquante : '$action' (autorisées : restart verify restore isolate unisolate block_ip unblock_ip list_blocked purge_expired)" >&2; exit 2 ;;
 esac
 shift
 args=()

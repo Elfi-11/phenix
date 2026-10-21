@@ -120,7 +120,7 @@ New-NetFirewallRule -DisplayName "Resilience entree" -Direction Inbound -Protoco
 ```
 
 3. Démarrer avec `.\infra\secrets\start.ps1` (il lance aussi Caddy avec `infra\caddy\Caddyfile`).
-4. Dans Docker Desktop, activer l'intégration WSL (chapitre 3), puis dans WSL : `sudo apt update && sudo apt install -y ansible`
+4. Dans Docker Desktop, activer l'intégration WSL (chapitre 3), puis dans WSL : `sudo apt update && sudo apt install -y ansible python3`
 5. Tester depuis la racine du projet, dans WSL :
 
 ```text

@@ -12,7 +12,7 @@ from app.database import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('CLIENT', 'MERCHANT', 'ADMIN')", name="ck_users_role"),
+        CheckConstraint("role IN ('CLIENT', 'MERCHANT', 'ADMIN', 'SERVICE')", name="ck_users_role"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -30,7 +30,8 @@ class Account(Base):
         CheckConstraint("status IN ('ACTIVE', 'FROZEN')", name="ck_accounts_status"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    # Un seul compte par utilisateur, garanti par la base (choix de conception du prototype)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), unique=True)
     balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     updated_at: Mapped[datetime] = mapped_column(
