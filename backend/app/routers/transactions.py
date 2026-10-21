@@ -9,9 +9,12 @@ from app.crud import transactions as crud_transactions
 from app.database import get_db
 from app.models import User
 from app.schemas import TransactionCreate, TransactionRead
-from app.security import get_current_user
+from app.security import require_role
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+# Paiements réservés aux rôles métier : ADMIN et SERVICE n'ont pas à payer ni à lire les paiements
+payment_user = require_role("CLIENT", "MERCHANT")
 
 
 # Payer : 201 si nouveau paiement, 200 si la même clé a déjà été traitée (retry)
@@ -19,7 +22,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 def create_transaction(
     data: TransactionCreate,
     response: Response,
-    user: User = Depends(get_current_user),
+    user: User = Depends(payment_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -42,7 +45,7 @@ def create_transaction(
 def list_transactions(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    user: User = Depends(get_current_user),
+    user: User = Depends(payment_user),
     db: Session = Depends(get_db),
 ):
     return crud_transactions.list_for_user(db, user.id, offset, limit)
@@ -52,7 +55,7 @@ def list_transactions(
 @router.get("/{transaction_id}", response_model=TransactionRead)
 def get_transaction(
     transaction_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(payment_user),
     db: Session = Depends(get_db),
 ):
     payment = crud_transactions.get_for_user(db, transaction_id, user.id)

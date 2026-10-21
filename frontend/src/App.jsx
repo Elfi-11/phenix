@@ -38,6 +38,9 @@ function App() {
                 <FormulaireConnexion onLogin={handleLogin} />
               ) : user.role === 'ADMIN' ? (
                 <Navigate to="/dashboard" />
+              ) : user.role === 'SERVICE' ? (
+                // Compte des programmes automatiques : pas d'interface (le backend refuse aussi ses accès métier)
+                <p className="text-2xl font-bold text-white drop-shadow">Compte technique : pas d'accès à l'interface</p>
               ) : (
                 <p className="text-2xl font-bold text-white drop-shadow">Connecté</p>
               )
