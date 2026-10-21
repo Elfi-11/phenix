@@ -16,9 +16,9 @@ Ce dossier contient deux fonctions distinctes : l’assistant documentaire RAG e
 .\infra\secrets\start.ps1
 ```
 
-Sous Windows, ce script démarre la plateforme, prépare les services RAG et lance le moteur SQL actif sur le PC hôte. Il construit l’image `phenix-detector` mais ne réentraîne pas les modèles. Prérequis : modèle SQL dans `backend/ML/experiments/local-sql-v1/model.joblib`, Python avec `requests`, Ansible dans WSL et accès à Docker Desktop. Le brute force reste manuel.
+Sous Windows, ce script démarre la plateforme, prépare les services RAG et lance le moteur ML commun actif sur le PC hôte. Il construit l’image `phenix-detector` mais ne réentraîne pas les modèles. Prérequis : modèles dans `backend/ML/experiments/local-sql-v1/model.joblib` et `backend/ML/experiments/local-bruteforce-v1/model.joblib`, Python avec `requests`, Ansible dans WSL et accès à Docker Desktop. Les deux détecteurs démarrent ensemble.
 
-Ctrl+C arrête le moteur SQL ; le site et les conteneurs restent démarrés. Relance seule : `python remediation/moteur_sql.py --apply`. Procédures et modes : [remédiation](../../remediation/README.md).
+Ctrl+C arrête le moteur commun ; le site et les conteneurs restent démarrés. Relance seule : `python remediation/moteur_ml.py --apply`. Procédures et modes : [remédiation](../../remediation/README.md).
 
 ## Assistant RAG
 
@@ -55,7 +55,7 @@ Seul le corpus prévu est indexé : Markdown, texte UTF-8 et PDF texte. Ne pas y
 
 Le modèle SQL utilise une représentation TF-IDF de caractères et une régression logistique sur le texte normalisé des paramètres. Le modèle brute force utilise une régression logistique avec normalisation sur quatre variables : tentatives, échecs 401, proportion d’échecs et fréquence sur la durée active dans une fenêtre de 60 s par IP. Il lit les POST `/api/auth/login` du WAF, sans collecter de mots de passe et sans dépendre des lignes `AUTH_FAILURE`.
 
-Les modèles sont entraînés hors ligne ; leurs seuils sont choisis sur calibration. Les résultats synthétiques ne garantissent pas les performances réelles. Le SQL a été essayé sur de vrais logs avec création d’un incident local ; le brute force attend cet essai. Les attaques lentes, distribuées ou inconnues et les IP partagées restent des limites.
+Les modèles sont entraînés hors ligne ; leurs seuils sont choisis sur calibration. Les résultats synthétiques ne garantissent pas les performances réelles. Le SQL a été essayé sur de vrais logs avec création d’un incident local ; le brute force a également détecté une rafale réelle et créé un incident local. Les attaques lentes, distribuées ou inconnues et les IP partagées restent des limites.
 
 Pour reproduire l’expérience SQL synthétique, choisir des dossiers de sortie neufs. Ces commandes sont séparées du démarrage opérationnel ; elles ne remplacent pas silencieusement le modèle déjà validé :
 
@@ -90,3 +90,7 @@ Essais et actions automatiques : [remédiation](../../remediation/README.md). Sc
 | Brute force : aucun signal | Vérifier les POST login et statuts 401 dans le WAF, l’IP et la fenêtre temporelle |
 
 Sur un ancien poste dont `rag` n’est pas interne, une migration du réseau reste nécessaire : arrêter et retirer seulement les conteneurs IA concernés, retirer leur ancien réseau devenu inutilisé puis relancer le script SOPS avec le même nom de projet. Conserver les volumes et identifier tout conteneur qui empêche la suppression du réseau avant de poursuivre. Cette opération ponctuelle ne fait pas partie du démarrage courant.
+
+## Collecte commune
+
+`detector/live_combined.py` récupère une seule fenêtre de logs Loki et applique les deux modèles figés avec leurs seuils respectifs. `remediation/moteur_ml.py` centralise incidents, protection des IP, blocage et vérification. Les deux détecteurs ont été testés séparément sur le poste ; leur nouvelle intégration commune doit être vérifiée avant la démonstration réseau.

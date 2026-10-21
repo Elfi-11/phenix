@@ -6,10 +6,11 @@ Les moteurs tournent sur le PC hôte. Le scoring ML s’exécute dans un contene
 
 | Programme | Source d’alerte | Lancement | État |
 |---|---|---|---|
-| `moteur_sql.py` | Modèle SQL sur les logs WAF | Automatique via `start.ps1` | Détection et incident validés localement ; test complet distant à réaliser |
-| `moteur_bruteforce.py` | Modèle sur les POST login, agrégés par IP sur 60 s | Manuel | Entraînement synthétique et tests logiciels réalisés ; validation réelle à réaliser |
+| `moteur_ml.py` | Modèles SQL et brute force sur une collecte WAF partagée | Automatique via `start.ps1` | Nouveau raccordement commun à vérifier sur le poste |
+| `moteur_sql.py` | Modèle SQL seul | Ancien lancement manuel | Conservé, ne pas lancer avec le moteur commun |
+| `moteur_bruteforce.py` | Modèle sur les POST login, agrégés par IP sur 60 s | Ancien lancement manuel | Détection et incident validés localement ; ne pas lancer avec le moteur commun |
 | `moteur.py` | Alerte simulée du squelette initial | Manuel, uniquement pour les essais de câblage | Conservé comme référence ; ne pas le confondre avec une détection réelle |
-| `start_sql.py` | Lanceur du moteur SQL actif | Appelé par `start.ps1` | Verrou entre les lancements qui passent par ce lanceur |
+| `start_sql.py` | Lanceur du moteur commun actif | Appelé par `start.ps1` | Verrou entre les lancements qui passent par ce lanceur |
 
 ## Prérequis et démarrage
 
@@ -21,33 +22,27 @@ Depuis la racine :
 .\infra\secrets\start.ps1
 ```
 
-Le script démarre la plateforme et Caddy, attend `/health`, puis lance le moteur SQL avec `--apply` dans le même terminal. Le mot de passe du compte `service_remediation` est récupéré en mémoire depuis la configuration du backend ; aucun mot de passe n’est ajouté au code. Le fichier SOPS déchiffré temporairement pour Compose est supprimé.
+Le script démarre la plateforme et Caddy, attend `/health`, puis lance le moteur commun avec `--apply` dans le même terminal. Le mot de passe du compte `service_remediation` est récupéré en mémoire depuis la configuration du backend ; aucun mot de passe n’est ajouté au code. Le fichier SOPS déchiffré temporairement pour Compose est supprimé.
 
 Le terminal reste occupé et affiche les cycles. Ctrl+C arrête le moteur ; les conteneurs et Caddy continuent de tourner. `docker compose down` n’arrête pas un moteur hôte encore ouvert : utiliser aussi Ctrl+C. Le moteur n’est pas un service Windows et ne redémarre pas automatiquement après fermeture du terminal.
 
 ### Relance manuelle et observation
 
-Pour relancer le SQL seul, sans build de la plateforme :
+Pour relancer le moteur commun seul, sans build de la plateforme :
 
 ```powershell
-python remediation/moteur_sql.py --apply
+python remediation/moteur_ml.py --apply
 ```
 
 Le mot de passe de démo est demandé si `DEMO_USER_PASSWORD` n’est pas présent dans l’environnement. Pour observer sans enregistrer d’incident ni lancer Ansible :
 
 ```powershell
-python remediation/moteur_sql.py
+python remediation/moteur_ml.py
 ```
 
-Ajouter `--once` pour un seul cycle. Pour le brute force, arrêter le moteur SQL puis lancer :
+Ajouter `--once` pour un cycle unique. Une seule collecte Loki alimente les deux modèles, sans réentraînement. Le terminal distingue `sql_injection` et `bruteforce`. Les alertes sont dédoublonnées par événement ; pour une même IP, un seul incident est en attente et une temporisation commune de cinq minutes limite les nouvelles actions. Si les deux familles signalent la même IP pendant cette période, la seconde reste visible en console sans second incident garanti. La description de l’incident conserve la première alerte prise en charge.
 
-```powershell
-python remediation/moteur_bruteforce.py
-# Apres validation en observation :
-python remediation/moteur_bruteforce.py --apply
-```
-
-Ne pas lancer plusieurs moteurs actifs en parallèle pendant les essais. Les appels directs à `moteur_sql.py` et `moteur_bruteforce.py` ne prennent pas le verrou du lanceur automatique.
+Arrêter les anciens moteurs SQL, brute force et simulé avant le démarrage commun. Le verrou du lanceur ne protège pas contre leurs lancements directs. Les anciens fichiers d’état restent conservés, sans migration automatique ; le moteur commun initialise `state-ml.json`. Les incidents déjà ouverts restent dans l’API et ne sont pas automatiquement rattachés au nouvel état.
 
 ## Boucle automatique
 
@@ -90,7 +85,7 @@ Un contrôle `/health` réussi ne prouve ni le refus effectif du PC attaquant ni
 
 ## Validation brute force
 
-Le modèle doit avoir été préparé selon le [README ML](../backend/ML/README.md). Lancer le moteur brute force en observation avant le [script de connexions échouées](../attaque/README.md#brute-force-sur-le-login). Vérifier les réponses 401, l’IP et les alertes. Puis tester le mode actif et les mêmes preuves de blocage et de paiement. Un test local conserve la protection de localhost ; il ne démontre pas le blocage distant.
+Le modèle doit avoir été préparé selon le [README ML](../backend/ML/README.md). Lancer le moteur commun en observation avant le [script de connexions échouées](../attaque/README.md#brute-force-sur-le-login). Vérifier les réponses 401, l’IP et les alertes. Puis tester le mode actif et les mêmes preuves de blocage et de paiement. Un test local conserve la protection de localhost ; il ne démontre pas le blocage distant.
 
 Les lignes backend `AUTH_FAILURE` restent utiles à l’analyse, mais le modèle livré lit les statuts WAF. Les règles SIEM ne sont pas utilisées comme décision par ces deux moteurs ML.
 
@@ -113,11 +108,9 @@ Le parseur extrait l’IP finale des logs WAF : sa fiabilité dépend des proxie
 Ignorer dans Git :
 
 ```gitignore
-/remediation/state-sql.json
-/remediation/state-sql.tmp
-/remediation/state-bruteforce.json
-/remediation/state-bruteforce.tmp
-/remediation/sql-runtime.lock
+/remediation/state-*.json
+/remediation/state-*.tmp
+/remediation/*-runtime.lock
 ```
 
 Les états permettent la reprise et le dédoublonnage. Ne pas les supprimer pendant l’exécution. Le fichier `.lock` peut rester après arrêt : le verrou réel est libéré par le système. Les fenêtres SQL sont relues pour absorber certains retards Loki, sans garantie d’exhaustivité. Le brute force évalue les 60 dernières secondes ; une interruption peut faire manquer une rafale ancienne.
@@ -134,3 +127,7 @@ Les états permettent la reprise et le dédoublonnage. Ne pas les supprimer pend
 | Erreur 401 du compte de service | Mot de passe et compte SERVICE réellement configurés |
 
 La détection intervient après journalisation. Une première injection peut avoir abouti ; bloquer l’IP n’annule pas une lecture de données et ne corrige pas la route vulnérable. La chaîne réalise un confinement. Le délai affiché dans l’incident mesure sa création jusqu’à sa résolution, pas nécessairement depuis le début de l’attaque. La disponibilité métier doit être constatée via la transaction de test.
+
+## Échec d’un détecteur
+
+Une erreur de chargement, de parsing ou de scoring de l’un des modèles invalide le cycle commun ; le curseur n’avance pas et aucune nouvelle décision n’est appliquée pour ce cycle. Les incidents en attente ne sont pas traités pendant un échec de collecte/scoring. Les deux modèles doivent donc être disponibles. Le prochain cycle réessaie et affiche l’erreur. Les détecteurs séparés restent disponibles pour diagnostic après arrêt du moteur commun.

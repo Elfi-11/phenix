@@ -23,3 +23,6 @@ backups/
 /remediation/state-*.json
 /remediation/state-*.tmp
 /remediation/sql-runtime.lock
+/remediation/*-runtime.lock
+/remediation/state-*.json
+/remediation/state-*.tmp

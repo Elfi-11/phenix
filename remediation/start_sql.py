@@ -1,4 +1,4 @@
-"""Lance le moteur SQL actif avec un verrou unique par depot, sur le PC hote."""
+"""Lance le moteur ML commun actif avec un verrou unique par depot, sur le PC hote."""
 from pathlib import Path
 import os
 import sys
@@ -21,7 +21,7 @@ def acquire_lock(path):
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
         stream.close()
-        raise RuntimeError('Un moteur SQL automatique utilise deja ce depot') from exc
+        raise RuntimeError('Un moteur ML commun automatique utilise deja ce depot') from exc
     return stream
 
 
@@ -30,13 +30,13 @@ def main():
     # de remplacement lors d'un lancement automatique.
     if not os.environ.get('DEMO_USER_PASSWORD'):
         raise RuntimeError('DEMO_USER_PASSWORD absent : lancer infra/secrets/start.ps1')
-    lock = acquire_lock(Path(__file__).with_name('sql-runtime.lock'))
+    lock = acquire_lock(Path(__file__).with_name('ml-runtime.lock'))
     try:
         # L'import apres le controle permet au moteur de lire l'environnement
-        # prepare par PowerShell. Le code SQL deja valide reste le point d'entree.
-        import moteur_sql
-        sys.argv = [str(Path(moteur_sql.__file__)), '--apply']
-        moteur_sql.main()
+        # prepare par PowerShell. Le code du moteur commun reste le point d'entree.
+        import moteur_ml
+        sys.argv = [str(Path(moteur_ml.__file__)), '--apply']
+        moteur_ml.main()
     finally:
         lock.close()
 

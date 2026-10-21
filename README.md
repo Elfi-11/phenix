@@ -17,7 +17,7 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 | Logs | Loki + Promtail | Logs des conteneurs |
 | Transaction de test | service `selftest` | Paiement de 1 € automatique toutes les 10 s (preuve de reprise) |
 | Assistant | service `rag` (Ollama + LangChain) | Répond aux opérateurs à partir des procédures (RAG), via le dashboard |
-| Remédiation | `remediation/` + playbooks Ansible | Moteur SQL raccordé au ML ; moteur brute force expérimental ; actions Ansible sur le PC hôte |
+| Remédiation | `remediation/` + playbooks Ansible | Moteur SQL raccordé au ML ; modèle brute force distinct ; actions Ansible sur le PC hôte |
 | Tableaux de bord | Grafana | Visualisation (métriques et logs) |
 | Accès au socket Docker | docker-socket-proxy | Lecture seule, utilisé par Promtail |
 | Admin BDD | pgAdmin (optionnel, profil `dev`) | Confort de développement |
@@ -101,9 +101,9 @@ git pull                                          # ensuite
 infra/secrets/start.sh
 ```
 
-Sous Windows, `start.ps1` construit aussi l’image du détecteur, démarre Compose avec SOPS et Caddy (port 8080), attend `/health`, puis lance le moteur SQL **actif** dans le terminal. Le mot de passe de service est transmis en mémoire et le fichier temporaire déchiffré est supprimé. Le modèle est chargé sans réentraînement. Le moteur brute force reste manuel.
+Sous Windows, `start.ps1` construit aussi l’image du détecteur, démarre Compose avec SOPS et Caddy (port 8080), attend `/health`, puis lance le moteur ML commun **actif** dans le terminal. Le mot de passe de service est transmis en mémoire et le fichier temporaire déchiffré est supprimé. Le modèle est chargé sans réentraînement. Les deux modèles SQL et brute force sont exécutés par le moteur commun.
 
-Le terminal reste occupé : Ctrl+C arrête le moteur sans arrêter le site. Pour relancer uniquement la remédiation SQL : `python remediation/moteur_sql.py --apply`. Ne pas démarrer un deuxième moteur en parallèle. Le lancement automatique décrit ici concerne `start.ps1` ; ne pas supposer que `start.sh` inclut le même raccordement.
+Le terminal reste occupé : Ctrl+C arrête le moteur sans arrêter le site. Pour relancer uniquement la remédiation SQL : `python remediation/moteur_ml.py --apply`. Ne pas démarrer un deuxième moteur en parallèle. Le lancement automatique décrit ici concerne `start.ps1` ; ne pas supposer que `start.sh` inclut le même raccordement.
 **Ne jamais lancer `docker compose up` directement** : il utiliserait les valeurs factices de `.env.example` et le backend planterait.
 
 **5. Vérifier**
@@ -249,10 +249,10 @@ Pour reconstruire après une modification, relancer `start.ps1` (ou `start.sh`).
 |---|---|---|
 | RAG | Corpus local → recherche → Ollama → réponse avec sources | Intégré au dashboard, sans action système |
 | SQL | Logs WAF dans Loki → modèle entraîné → incident → Ansible | Détection et incident validés localement ; blocage distant et paiement après action à vérifier sur le réseau |
-| Brute force | Fenêtres de login par IP → modèle distinct → même type de remédiation | Entraînement synthétique et tests logiciels réalisés ; essai sur trafic réel à réaliser |
+| Brute force | Fenêtres de login par IP → modèle distinct → même type de remédiation | Détection et incident validés localement ; blocage distant et paiement après action à vérifier |
 | SIEM | Règles Grafana sur les journaux | Supervision complémentaire, distincte de la décision du modèle SQL |
 
-Le moteur SQL démarre avec `start.ps1`. Le RAG conseille l’opérateur ; les moteurs de remédiation exécutent des actions autorisées. Les scripts d’attaque SQL et brute force sont conservés dans [attaque/](attaque/README.md). Lancement, test local via Swagger et test réseau : [remédiation](remediation/README.md). Données, modèles et RAG : [ML](backend/ML/README.md).
+Le moteur commun démarre les deux détecteurs avec `start.ps1`. Le RAG conseille l’opérateur ; les moteurs de remédiation exécutent des actions autorisées. Les scripts d’attaque SQL et brute force sont conservés dans [attaque/](attaque/README.md). Lancement, test local via Swagger et test réseau : [remédiation](remediation/README.md). Données, modèles et RAG : [ML](backend/ML/README.md).
 
 ## Actions de remédiation (Ansible)
 

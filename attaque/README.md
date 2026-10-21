@@ -5,13 +5,13 @@ Deux scénarios sont conservés pour la plateforme fictive de l’équipe : inje
 | Scénario | Script | Détecteur associé | État |
 |---|---|---|---|
 | SQL | `injection_sql.ps1` | Modèle SQL sur le texte des paramètres WAF | Détection et incident validés depuis le PC hôte ; test réseau complet à réaliser |
-| Brute force | `attaque_login.py` | Modèle distinct sur les fenêtres de login par IP | Modèle préparé sur données synthétiques ; essai réel à réaliser |
+| Brute force | `attaque_login.py` | Modèle distinct sur les fenêtres de login par IP | Détection et incident validés localement ; blocage distant à vérifier |
 
 Ces essais se limitent à l’environnement de démonstration autorisé de l’équipe. Le RAG est un assistant documentaire indépendant et ne déclenche pas les attaques ou les actions.
 
 ## Préparation commune
 
-Le PC hôte démarre la plateforme avec `infra/secrets/start.ps1`, qui lance aussi le moteur SQL actif. Avant un essai en observation ou un essai brute force, arrêter ce moteur avec Ctrl+C et lancer le moteur choisi selon le [README remédiation](../remediation/README.md). Ne pas laisser deux moteurs actifs simultanément.
+Le PC hôte démarre la plateforme avec `infra/secrets/start.ps1`, qui lance aussi le moteur ML commun actif. Avant un essai en observation ou un essai brute force, arrêter si nécessaire ce moteur avec Ctrl+C et choisir le mode observation ou actif selon le [README remédiation](../remediation/README.md). Ne pas laisser deux moteurs actifs simultanément.
 
 Pour une démonstration réseau, connecter le PC attaquant au point d’accès prévu par l’équipe (actuellement documenté `RESILIENCE-G5`) et vérifier l’adresse réelle du PC hôte. `http://192.168.137.1:8080` est la valeur initiale des scripts, à adapter si nécessaire. L’URL `/health` doit répondre. Depuis le PC attaquant, `localhost` désignerait ce PC, pas l’hôte.
 
@@ -31,7 +31,7 @@ Depuis la racine du dépôt, sur le PC attaquant :
 .\attaque\injection_sql.ps1
 ```
 
-Sur l’hôte, commencer avec le moteur SQL en observation et confirmer l’IP détectée. Passer ensuite au mode actif pour le test complet.
+Sur l’hôte, commencer avec le moteur commun en observation et confirmer l’IP détectée. Passer ensuite au mode actif pour le test complet.
 
 ### Test local via Swagger
 
@@ -66,7 +66,7 @@ python attaque/attaque_login.py --essais 30 --delai 0.2 --cible http://localhost
 python attaque/attaque_login.py --cible http://192.168.137.1:8080 --utilisateur bob_client
 ```
 
-Le premier exemple est le test local. Démarrer auparavant le moteur brute force **en observation**, après arrêt du moteur SQL. Le modèle compte les POST login et les réponses 401 par IP pendant 60 s. Les lignes `AUTH_FAILURE` du backend sont aussi disponibles pour l’analyse, mais ne sont pas l’entrée de ce modèle. Ne pas annoncer une règle SIEM brute force raccordée sans l’avoir vérifiée.
+Le premier exemple est le test local. Démarrer auparavant le moteur commun **en observation** (`python remediation/moteur_ml.py`), après arrêt de tout autre moteur. Le modèle compte les POST login et les réponses 401 par IP pendant 60 s. Les lignes `AUTH_FAILURE` du backend sont aussi disponibles pour l’analyse, mais ne sont pas l’entrée de ce modèle. Ne pas annoncer une règle SIEM brute force raccordée sans l’avoir vérifiée.
 
 ## Résultats à vérifier
 
