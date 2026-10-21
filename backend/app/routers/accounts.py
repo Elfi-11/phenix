@@ -1,4 +1,5 @@
 """Routes HTTP des comptes et contrôle des droits d'accès."""
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.security import get_current_user, require_role
 # main.py ajoute le préfixe /api : ces routes deviennent /api/accounts.
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
+logger = logging.getLogger("phenix.accounts")
 
 # Crée le compte de l'utilisateur identifié par son JWT.
 # Aucun corps de requête : le propriétaire et le solde sont fixés côté serveur.

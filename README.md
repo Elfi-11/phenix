@@ -31,6 +31,7 @@ phenix/
 ├── frontend/                 # application React (code dans src/)
 ├── backups/                  # dumps de la base (ignoré par Git)
 └── infra/
+    ├── caddy/                # proxy d'entrée (Caddyfile)
     ├── nginx/blocklist/      # adresses bloquées par la remédiation
     ├── observability/        # Prometheus, Loki, Promtail, Grafana
     └── secrets/              # scripts de chiffrement / déchiffrement
@@ -105,6 +106,8 @@ docker compose down
 
 Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets/README.md).
 
+Installation complète sur un PC : [docs/installation.md](docs/installation.md). PC qui sert de point d'entrée et lance les actions de remédiation : [docs/pc-hote.md](docs/pc-hote.md).
+
 ### En cas d'erreur
 
 | Message | Solution |
@@ -115,6 +118,13 @@ Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets
 | Backend `Restarting`, `CHANGE_ME` dans `docker compose logs backend` | Démarré sans le script : relancer l'étape 4 |
 | `container phenix-nginx-1 is unhealthy` | Attendre 30 s, puis relancer l'étape 4 |
 
+## Point d'entrée (Caddy)
+
+Chaîne : client, puis Caddy (8080), puis WAF (`127.0.0.1:8081`), puis nginx, puis l'application.
+
+Docker Desktop sur Windows remplace l'IP du client par `172.20.0.1`. Caddy remet l'IP réelle dans `X-Forwarded-For` et écrase celui qu'un client enverrait. Le WAF n'étant publié que sur `127.0.0.1`, Caddy ne peut pas être contourné.
+
+Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis lancer `docker compose logs nginx --tail 3` : `src_ip` doit être l'IP du téléphone (si le WAF est configuré pour `X-Forwarded-For`).
 ## Accès
 
 | URL | Service | Accessible depuis |
