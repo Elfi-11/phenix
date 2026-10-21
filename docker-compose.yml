@@ -250,6 +250,9 @@ services:
   ollama:
     image: ollama/ollama:0.11.10
     restart: unless-stopped
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
     volumes:
       - ollama_models:/root/.ollama
     security_opt:
@@ -263,16 +266,35 @@ services:
       retries: 6
       start_period: 10s
 
-  # Prépare uniquement les modèles absents dans le serveur Ollama.
+  # Téléchargement ponctuel : serveur temporaire, sans corpus ni réseau du RAG.
   ollama-init:
     image: ollama/ollama:0.11.10
     restart: "no"
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: 127.0.0.1:11434
+    volumes:
+      - ollama_models:/root/.ollama
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         set -eu
+        ollama serve &
+        server_pid=$$!
+        cleanup() {
+          kill "$$server_pid" 2>/dev/null || true
+          wait "$$server_pid" 2>/dev/null || true
+        }
+        trap cleanup EXIT
+        trap 'exit 1' INT TERM
+        attempt=0
+        until ollama list >/dev/null 2>&1; do
+          attempt=$$((attempt + 1))
+          if [ "$$attempt" -ge 30 ]; then
+            echo "Erreur : serveur temporaire Ollama indisponible" >&2
+            exit 1
+          fi
+          sleep 1
+        done
         for model in embeddinggemma:300m qwen3:4b-instruct; do
           if ollama show "$$model" >/dev/null 2>&1; then
             echo "Modele deja disponible : $$model"
@@ -281,13 +303,10 @@ services:
             ollama pull "$$model"
           fi
         done
-    depends_on:
-      ollama:
-        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     networks:
-      - rag
+      - model_download
 
   rag:
     build:
@@ -328,7 +347,11 @@ volumes:
   waf_logs:
 
 networks:
-  rag: {}
+  # Réseau d'inférence isolé de la connectivité externe.
+  rag:
+    internal: true
+  # Seul le téléchargeur ponctuel utilise ce réseau avec accès externe.
+  model_download: {}
   dmz: {}
   app:
     internal: true
