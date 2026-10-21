@@ -16,6 +16,8 @@ DEMO_USERS = [
     ("marchand_beta", "MERCHANT", Decimal("0.00")),
     ("admin", "ADMIN", None),
     ("service_remediation", "SERVICE", None),
+    # Compte dédié à la transaction de test automatique (gros solde : ne s'épuise pas) ; garder en dernier (le marchand reste id 3)
+    ("selftest_client", "CLIENT", Decimal("1000000.00")),
 ]
 
 

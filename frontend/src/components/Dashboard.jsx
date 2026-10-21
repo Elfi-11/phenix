@@ -21,7 +21,8 @@ function Dashboard({ token }) {
   const [incidents, setIncidents] = useState([])
   const [lastCheck, setLastCheck] = useState(null)
   const [traffic, setTraffic] = useState([])
-  const [trafficStale, setTrafficStale] = useState(false) 
+  const [trafficStale, setTrafficStale] = useState(false)
+  const [selftest, setSelftest] = useState(null) // { ok, at, detail } : transaction de test automatique
   useEffect(() => {
     async function refresh() {
       // 1. État de l'API : /health traverse toute la chaîne (Caddy, WAF, nginx, backend)
@@ -59,6 +60,17 @@ function Dashboard({ token }) {
         setTrafficStale(true)
       }
 
+      // 4. Transaction de test automatique (preuve de reprise)
+      try {
+        const res = await fetch('/api/selftest', {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        })
+        if (res.ok) setSelftest(await res.json())
+      } catch {
+        // relais indisponible : on garde le dernier état connu
+      }
+
       setLastCheck(new Date())
     }
 
@@ -75,11 +87,22 @@ function Dashboard({ token }) {
       <h1 className="text-3xl font-bold text-white drop-shadow">Supervision Phenix</h1>
 
       {/* Indicateurs */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="p-5 rounded-2xl border-2 border-amber-50 bg-black/60 text-white">
           <p className="text-sm text-orange-100/80">API de paiement</p>
           <p className="mt-2 text-2xl font-bold">
             {apiUp === null ? 'Vérification…' : apiUp ? '🟢 Opérationnelle' : '🔴 Indisponible'}
+          </p>
+        </div>
+        {/* Transaction de test : la vraie preuve que le métier fonctionne */}
+        <div className="p-5 rounded-2xl border-2 border-amber-50 bg-black/60 text-white">
+          <p className="text-sm text-orange-100/80">Transaction de test</p>
+          <p className="mt-2 text-2xl font-bold">
+            {!selftest || selftest.ok === null ? 'Vérification…' : selftest.ok ? '🟢 Réussie' : '🔴 Échouée'}
+          </p>
+          <p className="mt-1 text-xs text-orange-100/70">
+            {selftest?.at ? new Date(selftest.at).toLocaleTimeString('fr-FR') : '—'}
+            {selftest && !selftest.ok && selftest.detail ? ` · ${selftest.detail}` : ''}
           </p>
         </div>
         <div className="p-5 rounded-2xl border-2 border-amber-50 bg-black/60 text-white">

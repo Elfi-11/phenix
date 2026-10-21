@@ -15,6 +15,9 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 | Sauvegardes | `pg_dump` (service `pg_dump`) | Dump toutes les 5 min, 12 versions conservées |
 | Métriques | Prometheus + cAdvisor | Métriques des services et des conteneurs |
 | Logs | Loki + Promtail | Logs des conteneurs |
+| Transaction de test | service `selftest` | Paiement de 1 € automatique toutes les 10 s (preuve de reprise) |
+| Assistant | service `rag` (Ollama + LangChain) | Répond aux opérateurs à partir des procédures (RAG), via le dashboard |
+| Remédiation | `remediation/` + playbooks Ansible | Détection → action automatique → reprise (squelette à brancher) |
 | Tableaux de bord | Grafana | Visualisation (métriques et logs) |
 | Accès au socket Docker | docker-socket-proxy | Lecture seule, utilisé par Promtail |
 | Admin BDD | pgAdmin (optionnel, profil `dev`) | Confort de développement |
@@ -153,7 +156,7 @@ Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis la
 |---|---|
 | `/` | Connexion (puis redirection selon le rôle) |
 | `/inscription` | Création de compte (toujours un `CLIENT`) |
-| `/dashboard` | Supervision, réservée aux `ADMIN` : état de l'API, trafic (requêtes et erreurs par seconde, 15 min), incidents et temps de reprise (rafraîchis toutes les 5 s), assistant RAG en chatbox |
+| `/dashboard` | Supervision, réservée aux `ADMIN` : état de l'API, transaction de test, trafic (requêtes et erreurs par seconde, 15 min), incidents et temps de reprise (rafraîchis toutes les 5 s), assistant RAG en chatbox |
 
 Le token JWT est gardé en mémoire uniquement : un rechargement de la page déconnecte.
 
@@ -168,6 +171,7 @@ Créés automatiquement au premier démarrage (base vide), tous avec le mot de p
 | `marchand_beta` | `MERCHANT` | 0 € | Recevoir les paiements |
 | `admin` | `ADMIN` | pas de compte bancaire | Dashboard, gel des comptes |
 | `service_remediation` | `SERVICE` | pas de compte bancaire | ML et moteur de remédiation : créer et résoudre des incidents uniquement |
+| `selftest_client` | `CLIENT` | 1 000 000 € | Transaction de test automatique (gros solde pour ne pas s'épuiser) |
 
 Seul le rôle `CLIENT` peut être créé depuis l'interface. Un compte bancaire au plus par utilisateur (contrainte `UNIQUE` en base) ; seuls `CLIENT` et `MERCHANT` peuvent payer et consulter un compte.
 
@@ -189,9 +193,14 @@ Documentation interactive : http://localhost:8080/docs. Routes protégées : en-
 | `GET /api/incidents` | `ADMIN`, `SERVICE` | Liste des incidents (`?only_open=true`) |
 | `GET /api/metrics/traffic` | `ADMIN` | Trafic des 15 dernières minutes, relayé depuis Prometheus |
 | `POST /api/assistant/ask` | `ADMIN` | Question à l'assistant RAG (`{ "question": "..." }`), relayée au service `rag` ; réponse en 30 s à 1 min |
+| `GET /api/selftest` | `ADMIN` | Dernier résultat de la transaction de test automatique (relayé du service `selftest`) |
 | `GET /api/attackme/search` | Connecté | **Faille volontaire (injection SQL) pour la démonstration.** Permet de lire toute la base. À désactiver hors démo : retirer `api.include_router(attackme.router)` dans `backend/app/main.py` |
 
 Paiement rejoué avec la même `idempotency_key` (retry après incident) : renvoyé tel quel (200), sans second débit.
+
+### Transaction de test automatique (preuve de reprise)
+
+Le service `selftest` tente un vrai paiement de 1 € (`selftest_client` → marchand) toutes les 10 s, via l'API. C'est une vérification **active** du métier : si ce paiement passe, l'API, la base, l'authentification et la logique de paiement fonctionnent réellement — un conteneur « healthy » ne le prouve pas. Le résultat (`🟢 Réussie` / `🔴 Échouée`) s'affiche sur le dashboard et bascule en direct pendant un incident puis après la remédiation (Axe 1). Le service expose son dernier résultat sur un réseau interne ; seul le backend le lit, et le relaie aux `ADMIN`.
 
 ### Assistant RAG dans le dashboard
 
