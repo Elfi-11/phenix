@@ -10,14 +10,14 @@ Application de paiement **fictive** pour expérimenter la supervision, la cybers
 | Backend | Python, FastAPI | API |
 | Base de données | PostgreSQL 14 | Données |
 | Proxy d'entrée | Caddy (sur le PC hôte, hors Docker) | Seul point d'entrée du réseau (port 8080), ajoute l'IP réelle du client (`X-Forwarded-For`) |
-| WAF | ModSecurity + OWASP CRS (`owasp/modsecurity-crs`) | Filtre les requêtes, publié sur `127.0.0.1:8081` seulement |
+| WAF | ModSecurity + OWASP CRS (`owasp/modsecurity-crs`) | Inspecte les requêtes (configuration actuelle : DetectionOnly), publié sur `127.0.0.1:8081` seulement |
 | Reverse proxy | Nginx | Derrière le WAF, route vers le frontend et l'API, journaux d'accès en JSON |
 | Sauvegardes | `pg_dump` (service `pg_dump`) | Dump toutes les 5 min, 12 versions conservées |
 | Métriques | Prometheus + cAdvisor | Métriques des services et des conteneurs |
 | Logs | Loki + Promtail | Logs des conteneurs |
 | Transaction de test | service `selftest` | Paiement de 1 € automatique toutes les 10 s (preuve de reprise) |
 | Assistant | service `rag` (Ollama + LangChain) | Répond aux opérateurs à partir des procédures (RAG), via le dashboard |
-| Remédiation | `remediation/` + playbooks Ansible | Détection → action automatique → reprise (squelette à brancher) |
+| Remédiation | `remediation/` + playbooks Ansible | Moteur SQL raccordé au ML ; modèle brute force distinct ; actions Ansible sur le PC hôte |
 | Tableaux de bord | Grafana | Visualisation (métriques et logs) |
 | Accès au socket Docker | docker-socket-proxy | Lecture seule, utilisé par Promtail |
 | Admin BDD | pgAdmin (optionnel, profil `dev`) | Confort de développement |
@@ -34,6 +34,8 @@ phenix/
 ├── .sops.yaml
 ├── backend/                  # API FastAPI (code dans app/)
 ├── frontend/                 # application React (code dans src/)
+├── attaque/                  # scripts SQL et brute force de démonstration
+├── remediation/              # moteurs sur le PC hôte et suivi des incidents
 ├── backups/                  # dumps de la base (ignoré par Git)
 └── infra/
     ├── caddy/                # proxy d'entrée (Caddyfile)
@@ -49,11 +51,14 @@ phenix/
 | `dmz` | WAF | Publié sur `127.0.0.1:8081` (Caddy écoute sur le port 8080 du PC hôte) |
 | `app` | frontend, backend, nginx | Interne |
 | `data` | backend, base, sauvegardes, pgAdmin | Interne |
-| `ops` | supervision | Ports publiés sur 127.0.0.1 uniquement |
+| `ops` | supervision | Interfaces publiées sur 127.0.0.1 uniquement |
+| `rag` | Ollama et assistant | Interne |
+| `assistant` | backend et assistant | Interne |
+| `model_download` | initialisation des modèles | Sortie externe pour les téléchargements |
 
 ## Lancer le projet
 
-**Prérequis :** Git, Docker Desktop, [SOPS](https://github.com/getsops/sops) et [Caddy](https://caddyserver.com).
+**Prérequis :** Git, Docker Desktop, [SOPS](https://github.com/getsops/sops), [Caddy](https://caddyserver.com), Python avec `requests` sur Windows et Ansible dans WSL avec accès à Docker Desktop. Le modèle SQL doit être fourni dans `backend/ML/experiments/local-sql-v1/model.joblib` (dossier ignoré par Git). Voir [ML](backend/ML/README.md) et [remédiation](remediation/README.md).
 
 **1. Installer SOPS et Caddy** (une seule fois)
 
@@ -96,7 +101,9 @@ git pull                                          # ensuite
 infra/secrets/start.sh
 ```
 
-Le script remplace `docker compose up -d --build` : il déchiffre `.env.enc`, lance le build et les conteneurs avec les vrais secrets, supprime le fichier temporaire, puis démarre Caddy (port 8080).
+Sous Windows, `start.ps1` construit aussi l’image du détecteur, démarre Compose avec SOPS et Caddy (port 8080), attend `/health`, puis lance le moteur ML commun **actif** dans le terminal. Le mot de passe de service est transmis en mémoire et le fichier temporaire déchiffré est supprimé. Le modèle est chargé sans réentraînement. Les deux modèles SQL et brute force sont exécutés par le moteur commun.
+
+Le terminal reste occupé : Ctrl+C arrête le moteur sans arrêter le site. Pour relancer uniquement la remédiation SQL : `python remediation/moteur_ml.py --apply`. Ne pas démarrer un deuxième moteur en parallèle. Le lancement automatique décrit ici concerne `start.ps1` ; ne pas supposer que `start.sh` inclut le même raccordement.
 **Ne jamais lancer `docker compose up` directement** : il utiliserait les valeurs factices de `.env.example` et le backend planterait.
 
 **5. Vérifier**
@@ -107,9 +114,13 @@ docker compose ps
 
 **6. Arrêter**
 
+Arrêter d’abord le moteur avec Ctrl+C dans son terminal, puis les conteneurs :
+
 ```powershell
 docker compose down
 ```
+
+Caddy reste un processus Windows distinct ; pour l’arrêter aussi : `Get-Process caddy -ErrorAction SilentlyContinue | Stop-Process`.
 
 Détails (modifier un secret, limites) : [infra/secrets/README.md](infra/secrets/README.md).
 
@@ -141,9 +152,9 @@ Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis la
 
 | URL | Service | Accessible depuis |
 |---|---|---|
-| http://localhost:8080 | Application | Réseau du groupe |
-| http://localhost:8080/api/ | API | Réseau du groupe |
-| http://localhost:8080/docs | Documentation de l'API | Réseau du groupe |
+| http://localhost:8080 | Application | PC hôte ; sur le réseau, remplacer localhost par l’IP du PC hôte |
+| http://localhost:8080/api/ | API | Même règle d’adresse |
+| http://localhost:8080/docs | Documentation de l'API | Même règle d’adresse |
 | http://localhost:3000 | Grafana (utilisateur `admin`) | Ce PC uniquement |
 | http://localhost:9090 | Prometheus | Ce PC uniquement |
 | http://localhost:5050 | pgAdmin (profil `dev`) | Ce PC uniquement |
@@ -194,7 +205,7 @@ Documentation interactive : http://localhost:8080/docs. Routes protégées : en-
 | `GET /api/metrics/traffic` | `ADMIN` | Trafic des 15 dernières minutes, relayé depuis Prometheus |
 | `POST /api/assistant/ask` | `ADMIN` | Question à l'assistant RAG (`{ "question": "..." }`), relayée au service `rag` ; réponse en 30 s à 1 min |
 | `GET /api/selftest` | `ADMIN` | Dernier résultat de la transaction de test automatique (relayé du service `selftest`) |
-| `GET /api/attackme/search` | Connecté | **Faille volontaire (injection SQL) pour la démonstration.** Permet de lire toute la base. À désactiver hors démo : retirer `api.include_router(attackme.router)` dans `backend/app/main.py` |
+| `GET /api/attackme/search` | Connecté | **Faille volontaire (injection SQL) pour la démonstration.** Peut exposer des données selon la requête et les droits SQL. À désactiver hors démo : retirer `api.include_router(attackme.router)` dans `backend/app/main.py` |
 
 Paiement rejoué avec la même `idempotency_key` (retry après incident) : renvoyé tel quel (200), sans second débit.
 
@@ -227,10 +238,21 @@ Ouvrir http://localhost:5050 (connexion avec `PGADMIN_EMAIL` / `PGADMIN_PASSWORD
 ```bash
 docker compose ps                  # état des services
 docker compose logs -f backend     # logs d'un service
-docker compose down                # tout arrêter (les données sont conservées)
+docker compose down                # arrêter les conteneurs, données conservées ; moteur/Caddy séparés
 ```
 
 Pour reconstruire après une modification, relancer `start.ps1` (ou `start.sh`).
+
+## Détection et scénarios
+
+| Composant | Fonctionnement | État |
+|---|---|---|
+| RAG | Corpus local → recherche → Ollama → réponse avec sources | Intégré au dashboard, sans action système |
+| SQL | Logs WAF dans Loki → modèle entraîné → incident → Ansible | Détection et incident validés localement ; blocage distant et paiement après action à vérifier sur le réseau |
+| Brute force | Fenêtres de login par IP → modèle distinct → même type de remédiation | Détection et incident validés localement ; blocage distant et paiement après action à vérifier |
+| SIEM | Règles Grafana sur les journaux | Supervision complémentaire, distincte de la décision du modèle SQL |
+
+Le moteur commun démarre les deux détecteurs avec `start.ps1`. Le RAG conseille l’opérateur ; les moteurs de remédiation exécutent des actions autorisées. Les scripts d’attaque SQL et brute force sont conservés dans [attaque/](attaque/README.md). Lancement, test local via Swagger et test réseau : [remédiation](remediation/README.md). Données, modèles et RAG : [ML](backend/ML/README.md).
 
 ## Actions de remédiation (Ansible)
 
