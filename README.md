@@ -123,6 +123,8 @@ Durcissement : [docs/durcissement.md](docs/durcissement.md). Installation compl�
 | `container phenix-nginx-1 is unhealthy` | Attendre 30 s, puis relancer l'étape 4 |
 | `caddy n'est pas reconnu` | Fermer et rouvrir VS Code |
 | Le port 8080 ne répond pas | Caddy arrêté : `Get-Process caddy`, sinon relancer l'étape 4 |
+| Backend `Restarting`, `password authentication failed` | Base créée une première fois sans les secrets : `docker compose down`, `docker volume rm phenix_postgres-data`, puis relancer l'étape 4 (les comptes de démo sont recréés) |
+| Grafana refuse le mot de passe (401) | Grafana démarré une première fois sans les secrets : `docker compose exec grafana grafana cli admin reset-admin-password "<GRAFANA_ADMIN_PASSWORD>"` |
 
 ## Point d'entrée (Caddy)
 
@@ -142,6 +144,55 @@ Test : depuis un téléphone sur le point d'accès, ouvrir l'application puis la
 | http://localhost:3000 | Grafana (utilisateur `admin`) | Ce PC uniquement |
 | http://localhost:9090 | Prometheus | Ce PC uniquement |
 | http://localhost:5050 | pgAdmin (profil `dev`) | Ce PC uniquement |
+
+## Application
+
+### Pages
+
+| Page | Accès |
+|---|---|
+| `/` | Connexion (puis redirection selon le rôle) |
+| `/inscription` | Création de compte (toujours un `CLIENT`) |
+| `/dashboard` | Supervision, réservée aux `ADMIN` : état de l'API, trafic (requêtes et erreurs par seconde, 15 min), incidents et temps de reprise. Rafraîchi toutes les 5 s |
+
+Le token JWT est gardé en mémoire uniquement : un rechargement de la page déconnecte.
+
+### Rôles et comptes de démo
+
+Créés automatiquement au premier démarrage (base vide), tous avec le mot de passe `DEMO_USER_PASSWORD` des secrets.
+
+| Compte | Rôle | Solde | Usage |
+|---|---|---|---|
+| `alice_client` | `CLIENT` | 1 500 € | Payer |
+| `bob_client` | `CLIENT` | 800 € | Payer |
+| `marchand_beta` | `MERCHANT` | 0 € | Recevoir les paiements |
+| `admin` | `ADMIN` | 0 € | Dashboard, gel des comptes |
+| `service_remediation` | `SERVICE` | 0 € | ML et moteur de remédiation : créer et résoudre des incidents uniquement |
+
+Seul le rôle `CLIENT` peut être créé depuis l'interface. Un compte bancaire par utilisateur (contrainte `UNIQUE` en base).
+
+### Routes de l'API
+
+Documentation interactive : http://localhost:8080/docs. Routes protégées : en-tête `Authorization: Bearer <token>`.
+
+| Route | Accès | Rôle |
+|---|---|---|
+| `POST /api/auth/register` | Public | Créer un compte `CLIENT` |
+| `POST /api/auth/login` | Public | Obtenir un token (30 min) |
+| `GET /api/auth/me` | Connecté | Utilisateur courant et son rôle |
+| `GET /api/accounts/me` | Connecté | Mon compte et mon solde |
+| `PATCH /api/accounts/{id}/status` | `ADMIN` | Geler / dégeler un compte |
+| `POST /api/transactions` | Connecté | Payer : `idempotency_key`, `receiver_account_id`, `amount` (le compte émetteur est celui de l'utilisateur) |
+| `GET /api/transactions` | Connecté | Mon historique |
+| `POST /api/incidents` | `SERVICE` | Signaler un incident |
+| `PATCH /api/incidents/{id}/resolve` | `SERVICE` | Déclarer le service rétabli (calcule le temps de reprise) |
+| `GET /api/incidents` | `ADMIN`, `SERVICE` | Liste des incidents (`?only_open=true`) |
+| `GET /api/metrics/traffic` | `ADMIN` | Trafic des 15 dernières minutes, relayé depuis Prometheus |
+| `GET /api/attackme/search` | Connecté | **Faille volontaire (injection SQL) pour la démonstration.** Permet de lire toute la base. À désactiver hors démo : retirer `api.include_router(attackme.router)` dans `backend/app/main.py` |
+
+Paiement rejoué avec la même `idempotency_key` (retry après incident) : renvoyé tel quel (200), sans second débit.
+
+## pgAdmin (optionnel)
 
 pgAdmin ne démarre pas par défaut (outil d'admin, jamais exposé). Pour le lancer avec les secrets, puis effacer le `.env` en clair :
 
