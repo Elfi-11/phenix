@@ -27,7 +27,7 @@ Après un redémarrage de Docker Desktop, les conteneurs sont arrêtés : relanc
 2. Installer Ansible dans WSL (ouvrir WSL avec la commande `wsl`) :
 
 ```bash
-sudo apt update && sudo apt install -y ansible
+sudo apt update && sudo apt install -y ansible python3
 ```
 
 3. Récupérer le projet à jour et déposer la clé de l'équipe (reçue de Yannick, par un canal privé) dans `%USERPROFILE%\.sops\keys.txt` :
@@ -66,8 +66,14 @@ bash infra/ansible/run.sh verify service=backend
 | `restore` | Restaure la base depuis un dump (état actuel sauvegardé avant) | `confirm=yes`, `dump=` (optionnel) |
 | `isolate` | Retire un service du réseau, il reste démarré pour l'analyse | `service=` |
 | `unisolate` | Reconnecte un service isolé | `service=` |
+| `block_ip` | Bloque une adresse IP dans nginx (le client reçoit un 403) | `ip=`, `minutes=` (optionnel), `reason=` (optionnel) |
+| `unblock_ip` | Lève le blocage d'une adresse | `ip=` |
+| `list_blocked` | Affiche les adresses bloquées (vue admin) | aucun |
+| `purge_expired` | Retire les blocages arrivés à expiration | aucun |
 
 Services autorisés : `backend`, `frontend`, `nginx`, `db` (isolables : `backend`, `frontend`). Toute autre action ou tout autre service est refusé. Résultat : code de sortie `0` si l'action a réussi, autre valeur sinon (`2` pour une action inconnue).
+
+Blocage d'IP : une seule adresse IPv4 à la fois (pas de plage). Sans `minutes`, le blocage dure jusqu'à `unblock_ip` (décision d'un admin). Avec `minutes`, une date de fin est écrite mais l'adresse n'est retirée que par `purge_expired`, que le moteur doit appeler régulièrement. Le motif ne contient que lettres, chiffres et `_ . : -` (pas d'espace). Ne sont jamais bloquées : `127.0.0.0/8`, `192.168.137.1` (ce PC), `172.16.0.0/12` (réseau Docker), `169.254.0.0/16`. Le fichier `infra/nginx/blocklist/blocklist.conf` est modifié par ces actions : ne pas le commiter avec des blocages (`git checkout -- infra/nginx/blocklist/blocklist.conf`).
 
 Le moteur lance la commande avec une liste d'arguments (jamais une chaîne de shell, pour éviter les injections). Exemple en Python :
 
@@ -96,6 +102,8 @@ ok, sortie = run_action("restart", service="backend")
 - `docker ps` fonctionne dans WSL.
 - Chaque action a été testée une fois.
 - Le point d'accès `RESILIENCE-G5` est allumé et le port 8080 est ouvert dans le pare-feu Windows.
+- Caddy tourne (`Get-Process caddy`) et `http://localhost:8080/health` répond 200.
+- La liste de blocage est vide : `bash infra/ansible/run.sh list_blocked` (sinon `unblock_ip`).
 
 ## 7. Problèmes déjà rencontrés
 
@@ -106,4 +114,4 @@ ok, sortie = run_action("restart", service="backend")
 | `host not found in upstream "backend"` au rechargement de nginx | Le backend est en panne, son nom n'existe plus sur le réseau Docker | Réparer le backend, puis relancer l'action |
 | Backend qui redémarre en boucle, `password authentication failed` | Mot de passe de `DATABASE_URL` différent de `POSTGRES_PASSWORD` | Lancer `.\infra\secrets\rotate.ps1` |
 | Port 8080 muet | Caddy arrêté | `Get-Process caddy`, sinon relancer `start.ps1` |
-| Erreur 502 après un redémarrage du backend | nginx garde l'ancienne adresse du backend | Les actions `restart` rechargent nginx ; à terme, ajouter un résolveur DNS dans `nginx.conf` |
+| Erreur 502 après un redémarrage du backend | nginx garde l'ancienne adresse du backend | Corrigé dans `nginx.conf` (résolveur DNS) ; si une 502 persiste, `docker compose exec nginx nginx -s reload` |

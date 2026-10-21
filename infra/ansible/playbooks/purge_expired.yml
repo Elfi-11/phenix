@@ -1,0 +1,10 @@
+# Action : retirer les blocages arrivés à expiration
+# Usage  : bash infra/ansible/run.sh purge_expired
+- name: Retirer les blocages expirés
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Appliquer
+      ansible.builtin.include_tasks: ../tasks/blocklist_apply.yml
+      vars:
+        bl_args: ['purge']

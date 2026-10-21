@@ -40,4 +40,15 @@ Code de sortie : `0` = action réussie, autre = échec (le détail est dans la s
 - Redémarrer le backend ou le frontend change leur adresse : nginx est donc rechargé ensuite (sinon erreur 502).
 - `restore` arrête le backend pendant la restauration (tout ou rien), puis le redémarre, même en cas d'échec.
 - Un dump peut contenir des données déjà corrompues : choisir un `dump=` plus ancien si besoin (12 versions, 1 h d'historique).
-- Le blocage d'IP (`block_ip`) viendra après la décision de l'équipe sur le WAF et l'IP réelle.
+- Le blocage d'IP s'appuie sur nginx : `block_ip` écrit `deny x.x.x.x;` dans `infra/nginx/blocklist/blocklist.conf`, teste puis recharge nginx. Sans `minutes`, le blocage dure jusqu'à `unblock_ip` (décision d'un admin). Avec `minutes`, il n'est retiré que par `purge_expired` : à appeler régulièrement. Ne pas commiter `blocklist.conf` modifié.
+
+## Blocage d'IP
+
+```bash
+bash infra/ansible/run.sh block_ip ip=203.0.113.5 minutes=60 reason=bruteforce
+bash infra/ansible/run.sh unblock_ip ip=203.0.113.5
+bash infra/ansible/run.sh list_blocked
+bash infra/ansible/run.sh purge_expired
+```
+
+Jamais bloquées : `127.0.0.0/8`, `192.168.137.1`, `172.16.0.0/12`, `169.254.0.0/16` (liste `never_block`). Motif : lettres, chiffres, `_ . : -` seulement.

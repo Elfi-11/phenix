@@ -1,0 +1,127 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: waf-securite
+    folder: Phenix
+    interval: 1m
+    rules:
+      - uid: phenix-waf-403-rafale
+        title: Rafale de 403 depuis une meme IP
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Plus de 10 requetes refusees (403) en 5 min depuis {{ $labels.ip }}'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: 'sum by (ip) (count_over_time({container="phenix-waf-1"} | pattern `<_> - - [<_>] "<method> <path> <_>" <status> <size> "<_>" "<_>" "<ip>"` | status="403" [5m]))'
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+
+      - uid: phenix-waf-404-scan
+        title: Scan de chemins (beaucoup de 404) depuis une meme IP
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Plus de 15 requetes 404 en 5 min depuis {{ $labels.ip }} : scan probable'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: 'sum by (ip) (count_over_time({container="phenix-waf-1"} | pattern `<_> - - [<_>] "<method> <path> <_>" <status> <size> "<_>" "<_>" "<ip>"` | status="404" [5m]))'
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [15] }
+
+      - uid: phenix-waf-5xx
+        title: Erreurs serveur 5xx
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Plus de 5 erreurs 5xx en 5 min : un service est peut-etre en panne'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: 'sum(count_over_time({container="phenix-waf-1"} | pattern `<_> - - [<_>] "<method> <path> <_>" <status> <size> "<_>" "<_>" "<ip>"` | status=~"5.." [5m]))'
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+
+      - uid: phenix-waf-sqli
+        title: Tentative d'injection SQL
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Motif d injection SQL detecte depuis {{ $labels.ip }}'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: |
+                sum by (ip) (count_over_time({container="phenix-waf-1"} |~ `(?i)(union(%20|\+|\s)+(all(%20|\+|\s)+)?select|(%27|')(%20|\+|\s)*(or|and)(%20|\+|\s)|(or|and)(%20|\+|\s)+[0-9]+(%3D|=)[0-9]+|sleep[(]|sleep%28|benchmark[(]|benchmark%28|information_schema|(%27|')(%20|\+)*(--|%2D%2D|%23))` | pattern `<_> - - [<_>] "<method> <path> <_>" <status> <size> "<_>" "<_>" "<ip>"` [5m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
