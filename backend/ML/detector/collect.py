@@ -30,7 +30,16 @@ def parse_access(line, labels=None, loki_ns=None):
     d = match.groupdict()
     # Le dernier champ est extrait mais sa fiabilité dépend de la configuration des proxies.
     peer = str(ipaddress.ip_address(d['peer']))
-    client = str(ipaddress.ip_address(d['client']))
+
+    # Un appel interne au WAF peut ne pas transmettre d'IP client ("-").
+    # Conserver alors le pair réseau ; le moteur protège déjà cette adresse
+    # lorsque client_ip == peer_ip pour éviter de bloquer le proxy.
+    client = (
+        peer
+        if d['client'] == '-'
+        else str(ipaddress.ip_address(d['client']))
+    )
+    
     stamp = re.fullmatch(r'(\d{2})/([A-Za-z]{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-]\d{4})', d['time'])
     if not stamp or stamp[2] not in MONTHS:
         raise ValueError('Horodatage WAF invalide')

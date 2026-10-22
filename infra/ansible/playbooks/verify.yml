@@ -33,6 +33,29 @@
       retries: 10
       delay: 3
 
+    # Paiement frais via le service selftest : aucune clé ni mot de passe dans Ansible.
+    # Le serveur selftest sérialise ce contrôle avec sa boucle périodique.
+    - name: Trouver le service de test métier
+      ansible.builtin.include_tasks: ../tasks/get_container.yml
+      vars:
+        svc: selftest
+      when: service == 'backend'
+
+    - name: Vérifier un paiement réel de 1 EUR puis son retour
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ container_id }}"
+          - python
+          - selftest.py
+          - --verify
+      register: _payment_probe
+      changed_when: true
+      when: service == 'backend'
+
     - name: Résultat
       ansible.builtin.debug:
-        msg: "OK : {{ service }} est prêt et {{ check_url | default(entry_url) }} répond 200"
+        msg: >-
+          OK : {{ service }} est prêt et {{ check_url | default(entry_url) }} répond 200.
+          {{ 'Paiement métier aller-retour et soldes validés.' if service == 'backend' else 'Contrôle HTTP uniquement pour ce service.' }}

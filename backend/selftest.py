@@ -1,100 +1,124 @@
-"""Transaction de test automatique — preuve de reprise (Axe 1).
-
-Toutes les N secondes, tente un vrai paiement (selftest_client -> marchand).
-C'est une vérification ACTIVE du métier : si ce paiement passe, l'API, la base,
-l'authentification et la logique de paiement fonctionnent réellement.
-
-Expose le dernier résultat sur http://selftest:9000/status (lu par le backend,
-qui le relaie au dashboard admin). Librairie standard uniquement (urllib).
-"""
+"""Paiement réel aller-retour : contrôle périodique et preuve fraîche demandée par Ansible."""
+import argparse
 import json
 import os
+from pathlib import Path
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from payment_probe import PaymentProbe
 
-API = os.getenv("SELFTEST_API", "http://backend:8000")
-USER = os.getenv("SELFTEST_USER", "selftest_client")
-PASSWORD = os.getenv("DEMO_USER_PASSWORD", "")
-MERCHANT_ID = int(os.getenv("SELFTEST_MERCHANT_ID", "3"))
-INTERVAL_S = int(os.getenv("SELFTEST_INTERVAL", "10"))
+# Le test passe par l’entrée Caddy de Docker Desktop, donc WAF puis Nginx.
+# Sur un autre environnement, définir explicitement une entrée équivalente.
+API = os.getenv('SELFTEST_API', 'http://host.docker.internal:8080')
+USER = os.getenv('SELFTEST_USER', 'selftest_client')
+RECEIVER = os.getenv('SELFTEST_RECEIVER_USER', 'marchand_beta')
+PASSWORD = os.getenv('DEMO_USER_PASSWORD', '')
+INTERVAL_S = max(1, int(os.getenv('SELFTEST_INTERVAL', '10')))
+STATE_PATH = os.getenv('SELFTEST_STATE_PATH', '/app/selftest_state/payment-probe.json')
 STATUS_PORT = 9000
-
-# Dernier résultat, partagé entre le thread de test et le serveur de statut
-_etat = {"ok": None, "http_status": None, "at": None, "detail": "démarrage…"}
-_lock = threading.Lock()
-
-
-def _post(url: str, payload: dict, token: str | None = None) -> tuple[int, dict]:
-    """POST JSON avec urllib. Renvoie (code HTTP, corps décodé)."""
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as res:
-            return res.status, json.load(res)
-    except urllib.error.HTTPError as exc:
-        try:
-            return exc.code, json.load(exc)
-        except Exception:
-            return exc.code, {}
+_etat = {'ok': None, 'http_status': None, 'at': None, 'detail': 'démarrage…'}
+_status_lock = threading.Lock()
+_probe = None
 
 
-def un_paiement() -> dict:
-    """Login puis paiement de 1 €. Renvoie le résultat sans lever d'exception."""
-    now = datetime.now(timezone.utc).isoformat()
-    try:
-        code, corps = _post(f"{API}/api/auth/login", {"username": USER, "password": PASSWORD})
-        if code != 200:
-            return {"ok": False, "http_status": code, "at": now, "detail": "login échoué"}
-        token = corps["access_token"]
-
-        # Clé unique par essai : chaque paiement est distinct (pas d'idempotence ici)
-        cle = f"selftest-{int(time.time() * 1000)}"
-        code, corps = _post(
-            f"{API}/api/transactions",
-            {"idempotency_key": cle, "receiver_account_id": MERCHANT_ID, "amount": "1.00"},
-            token,
-        )
-        if code in (200, 201):
-            return {"ok": True, "http_status": code, "at": now, "detail": "paiement OK"}
-        return {"ok": False, "http_status": code, "at": now, "detail": str(corps.get("detail", "paiement refusé"))}
-    except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
-        # Service injoignable (ex. pendant l'incident) : c'est le ❌ attendu
-        return {"ok": False, "http_status": None, "at": now, "detail": f"injoignable ({type(exc).__name__})"}
+def un_paiement(require_fresh=False):
+    # Tous les appels passent par le même objet et le même verrou ; le test
+    # périodique ne peut pas interférer avec le test lancé par Ansible.
+    result = _probe.run(require_fresh=require_fresh)
+    with _status_lock:
+        _etat.clear()
+        _etat.update(result)
+    print(f"selftest: {'OK' if result['ok'] else 'ECHEC'} — {result['detail']}", flush=True)
+    return result
 
 
 def boucle():
     while True:
-        resultat = un_paiement()
-        with _lock:
-            _etat.update(resultat)
-        print(f"selftest: {'OK' if resultat['ok'] else 'ECHEC'} — {resultat['detail']}", flush=True)
+        un_paiement()
         time.sleep(INTERVAL_S)
 
 
 class StatusHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path != "/status":
-            self.send_response(404)
-            self.end_headers()
-            return
-        with _lock:
-            body = json.dumps(_etat).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+    def respond(self, code, body):
+        encoded = json.dumps(body, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(encoded)))
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(encoded)
+
+    def do_GET(self):
+        # Format historique conservé pour le backend et le dashboard.
+        if self.path != '/status':
+            self.respond(404, {'detail': 'Route inconnue'}); return
+        with _status_lock:
+            body = dict(_etat)
+        self.respond(200, body)
+
+    def do_POST(self):
+        # Déclenchement uniquement depuis l’intérieur du conteneur via docker exec.
+        # Aucun accès ADMIN ou SERVICE supplémentaire n’est accordé à l’API métier.
+        if self.path != '/run':
+            self.respond(404, {'detail': 'Route inconnue'}); return
+        if self.client_address[0] not in ('127.0.0.1', '::1'):
+            self.respond(403, {'detail': 'Déclenchement local uniquement'}); return
+        result = un_paiement(require_fresh=True)
+        self.respond(200 if result['ok'] else 503, result)
 
     def log_message(self, *args):
-        pass  # pas de log pour chaque lecture du dashboard
+        pass
 
 
-if __name__ == "__main__":
+def verify_once():
+    # Ansible exige un paiement commencé APRES sa demande, pas le dernier vert
+    # du dashboard. Le serveur exécute un nouveau cycle et renvoie les références.
+    request = urllib.request.Request(f'http://127.0.0.1:{STATUS_PORT}/run', method='POST')
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        try:
+            print(exc.read().decode(), flush=True)
+        except Exception:
+            print('Échec du test métier', flush=True)
+        return 1
+    except (urllib.error.URLError, OSError, ValueError):
+        print('Selftest indisponible ou réponse invalide', flush=True)
+        return 1
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    return 0 if result.get('ok') is True else 1
+
+
+def main():
+    global _probe
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--verify', action='store_true', help='Demander un test neuf au serveur déjà lancé')
+    args = parser.parse_args()
+    if args.verify:
+        return verify_once()
+    # Le service échoue explicitement si le volume persistant manque ou si une
+    # autre instance utilise le même journal. Aucun repli silencieux dans /tmp.
+    state = Path(STATE_PATH)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    owner = open(state.with_suffix('.lock'), 'a+')
+    import fcntl
+    fcntl.flock(owner.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    _probe = PaymentProbe(API, (USER, RECEIVER),
+        (os.getenv('SELFTEST_USER_PASSWORD', PASSWORD), os.getenv('SELFTEST_RECEIVER_PASSWORD', PASSWORD)), state)
+    server = ThreadingHTTPServer(('0.0.0.0', STATUS_PORT), StatusHandler)
     threading.Thread(target=boucle, daemon=True).start()
-    print(f"selftest: statut sur le port {STATUS_PORT}, paiement toutes les {INTERVAL_S}s", flush=True)
-    HTTPServer(("0.0.0.0", STATUS_PORT), StatusHandler).serve_forever()
+    print(f'selftest: aller-retour via {API}, intervalle {INTERVAL_S}s', flush=True)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        owner.close()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

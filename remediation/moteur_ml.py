@@ -158,9 +158,14 @@ def traiter(token,entry,url,save):
     if not ok:
         print(output,flush=True);return 'retry'
     ok,output=action_ansible('verify',service='backend',check_url=url)
-    print(f"  verify   : {'OK' if ok else 'ÉCHEC'}",flush=True)
+    print(f"  verify   : {'OK' if ok else 'ÉCHEC'}", flush=True)
+
+    # Afficher le résultat Ansible, y compris les références des paiements
+    # et le contrôle des soldes, avant de clôturer l'incident.
+    print(output, flush=True)
+
     if not ok:
-        print(output,flush=True);return 'retry'
+        return 'retry'
     resoudre_incident(token,entry['incident_id'],f"block_ip {alert['ip']} ({alert['detection_kind']} ML) + verify OK")
     print(f"  incident #{entry['incident_id']} résolu",flush=True)
     return 'resolved'
