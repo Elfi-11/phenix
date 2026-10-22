@@ -233,7 +233,22 @@ def main():
         state=json.loads(STATE_FILE.read_text(encoding='utf-8'))
         if state.get('version')!=1:raise ValueError('État incompatible')
     else:state=fresh_state(time.time_ns())
+
+    # Après un long arrêt, reprendre les logs récents sans effacer
+    # les incidents en attente ni la mémoire des détections.
+    now_ns = time.time_ns()
+    if now_ns - state['cursor_ns'] > 180 * NS:
+        print(
+            "[REPRISE] Curseur ancien : retour aux logs récents. "
+            "L'historique intermédiaire ne sera pas analysé.",
+            flush=True,
+        )
+        state['cursor_ns'] = now_ns - 30 * NS
+        if args.apply:
+            save_state(state, STATE_FILE)
+
     print('Moteur ML (SQL + brute force) : '+('REMÉDIATION ACTIVE' if args.apply else 'OBSERVATION'),flush=True)
+
     if url:print('Vérification depuis Ansible : '+url,flush=True)
     try:
         while True:
