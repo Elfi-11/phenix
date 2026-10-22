@@ -115,6 +115,45 @@ Ignorer dans Git :
 
 Les états permettent la reprise et le dédoublonnage. Ne pas les supprimer pendant l’exécution. Le fichier `.lock` peut rester après arrêt : le verrou réel est libéré par le système. Les fenêtres SQL sont relues pour absorber certains retards Loki, sans garantie d’exhaustivité. Le brute force évalue les 60 dernières secondes ; une interruption peut faire manquer une rafale ancienne.
 
+## Débloquer une IP après un test
+
+Le blocage concerne l’adresse IP du poste, pas le compte utilisateur.
+Résoudre un incident via l’API ne retire pas le blocage dans Nginx.
+
+Depuis PowerShell, à la racine du projet, remplacer l’IP d’exemple par
+celle du poste à débloquer :
+
+```powershell
+wsl --cd "$((Get-Location).Path)" bash infra/ansible/run.sh unblock_ip ip=192.168.137.158
+```
+
+Vérifier la liste des blocages restants :
+
+```powershell
+wsl --cd "$((Get-Location).Path)" bash infra/ansible/run.sh list_blocked
+```
+
+Depuis le poste débloqué, vérifier l’accès à
+`http://192.168.137.1:8080/health`, en adaptant l’adresse du PC hôte.
+
+L’ancien incident peut ensuite être clôturé via
+`PATCH /api/incidents/{id}/resolve`, avec le compte SERVICE :
+
+```json
+{
+  "action_taken": "Fin du test : IP débloquée manuellement via Ansible et accès vérifié."
+}
+```
+
+Le moteur conserve une temporisation de cinq minutes par IP après le
+traitement précédent. Le déblocage et la résolution de l’incident ne
+réinitialisent pas ce délai. Attendre son expiration avant un nouvel
+essai complet.
+
+Si une attaque continue pendant le déblocage, le moteur actif peut
+rebloquer l’IP après expiration de la temporisation. Arrêter le script
+d’attaque avant le nettoyage.
+
 ## Diagnostic et limites
 
 | Symptôme | Vérification |

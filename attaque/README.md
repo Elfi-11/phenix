@@ -68,6 +68,8 @@ python attaque/attaque_login.py --cible http://192.168.137.1:8080 --utilisateur 
 
 Le premier exemple est le test local. Démarrer auparavant le moteur commun **en observation** (`python remediation/moteur_ml.py`), après arrêt de tout autre moteur. Le modèle compte les POST login et les réponses 401 par IP pendant 60 s. Les lignes `AUTH_FAILURE` du backend sont aussi disponibles pour l’analyse, mais ne sont pas l’entrée de ce modèle. Ne pas annoncer une règle SIEM brute force raccordée sans l’avoir vérifiée.
 
+Après un essai, suivre la [procédure de déblocage de l’IP](../remediation/README.md#débloquer-une-ip-après-un-test) avant de recommencer.
+
 ## Résultats à vérifier
 
 | Étape | Résultat attendu |
